@@ -1,14 +1,22 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getUser, clearSession } from './api'
 import AppIcon from './components/AppIcon.vue'
+import Toasts from './components/Toasts.vue'
+import ConfirmDialog from './components/ConfirmDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
 
 const user = computed(() => getUser())
 const isAuthPage = computed(() => route.path === '/login')
+const menuOpen = ref(false)
+
+const pageTitle = computed(() => {
+  const t = { '/inicio': 'Dashboard', '/activos': 'Inventario', '/usuarios': 'Usuarios' }
+  return t[route.path] || 'AFT Camagüey'
+})
 
 function logout() {
   clearSession()
@@ -17,38 +25,49 @@ function logout() {
 </script>
 
 <template>
-  <div v-if="isAuthPage">
-    <router-view />
-  </div>
-  <div v-else class="layout">
-    <aside class="side">
-      <div class="brand">
-        <div class="logo"><AppIcon name="box" :size="30" /></div>
-        <div>
-          <div class="brand-name">AFT Camagüey</div>
-          <div class="brand-sub">Logística de Activos</div>
-        </div>
-      </div>
-      <nav>
-        <router-link to="/inicio" class="nav-link" active-class="act"><AppIcon name="chart" :size="17" /> Dashboard</router-link>
-        <router-link to="/activos" class="nav-link" active-class="act"><AppIcon name="box" :size="17" /> Inventario</router-link>
-        <router-link v-if="user?.rol === 'admin'" to="/usuarios" class="nav-link" active-class="act"><AppIcon name="users" :size="17" /> Usuarios</router-link>
-      </nav>
-      <div class="side-foot">
-        <div class="who">{{ user?.nombre || user?.username }}</div>
-        <div class="role">{{ user?.rol === 'admin' ? 'Administrador' : 'Usuario' }}</div>
-        <button class="btn sec sm" @click="logout"><AppIcon name="log-out" :size="15" /> Salir</button>
-      </div>
-    </aside>
-    <main class="content">
+  <div>
+    <div v-if="isAuthPage">
       <router-view />
-    </main>
+    </div>
+    <div v-else class="layout">
+      <div v-if="menuOpen" class="backdrop" @click="menuOpen = false"></div>
+      <aside class="side" :class="{ open: menuOpen }">
+        <div class="brand">
+          <div class="logo"><AppIcon name="box" :size="30" /></div>
+          <div>
+            <div class="brand-name">AFT Camagüey</div>
+            <div class="brand-sub">Logística de Activos</div>
+          </div>
+        </div>
+        <nav>
+          <router-link to="/inicio" class="nav-link" active-class="act"><AppIcon name="chart" :size="17" /> Dashboard</router-link>
+          <router-link to="/activos" class="nav-link" active-class="act"><AppIcon name="box" :size="17" /> Inventario</router-link>
+          <router-link v-if="user?.rol === 'admin'" to="/usuarios" class="nav-link" active-class="act"><AppIcon name="users" :size="17" /> Usuarios</router-link>
+        </nav>
+        <div class="side-foot">
+          <div class="who">{{ user?.nombre || user?.username }}</div>
+          <div class="role">{{ user?.rol === 'admin' ? 'Administrador' : 'Usuario' }}</div>
+          <button class="btn sec sm" @click="logout"><AppIcon name="log-out" :size="15" /> Salir</button>
+        </div>
+      </aside>
+      <div class="main">
+        <header class="topbar">
+          <button class="btn sec sm hamb" @click="menuOpen = true" aria-label="Abrir menú"><AppIcon name="menu" :size="18" /></button>
+          <span class="tb-title">{{ pageTitle }}</span>
+        </header>
+        <main class="content">
+          <router-view />
+        </main>
+      </div>
+    </div>
+    <Toasts />
+    <ConfirmDialog />
   </div>
 </template>
 
 <style scoped>
 .layout { display: flex; min-height: 100vh; }
-.side { width: 240px; background: #0f172a; color: #fff; display: flex; flex-direction: column; padding: 18px 14px; position: sticky; top: 0; height: 100vh; }
+.side { width: 240px; background: #0f172a; color: #fff; display: flex; flex-direction: column; padding: 18px 14px; position: sticky; top: 0; height: 100vh; z-index: 700; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 6px 4px 18px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 16px; }
 .logo { color: #60a5fa; display: flex; }
 .brand-name { font-weight: 800; font-size: 15px; }
@@ -61,5 +80,21 @@ nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
 .who { font-weight: 700; font-size: 13px; }
 .role { font-size: 11px; color: #94a3b8; margin-bottom: 8px; }
 .side-foot .btn { width: 100%; justify-content: center; }
+
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.topbar {
+  display: none; align-items: center; gap: 12px; padding: 12px 16px;
+  background: #0f172a; color: #fff; position: sticky; top: 0; z-index: 600;
+}
+.tb-title { font-weight: 800; font-size: 15px; }
+.backdrop { position: fixed; inset: 0; background: rgba(15,23,42,0.5); z-index: 650; }
 .content { flex: 1; padding: 24px 28px; overflow-x: hidden; }
+
+@media (max-width: 820px) {
+  .side { position: fixed; left: 0; top: 0; transform: translateX(-102%); transition: transform 0.22s ease; box-shadow: none; }
+  .side.open { transform: translateX(0); box-shadow: 0 0 40px rgba(0,0,0,0.35); }
+  .topbar { display: flex; }
+  .main { width: 100%; }
+  .content { padding: 16px; }
+}
 </style>

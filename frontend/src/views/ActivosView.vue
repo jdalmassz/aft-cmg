@@ -3,6 +3,8 @@ import { ref, onMounted, computed } from 'vue'
 import QRCode from 'qrcode'
 import { api, formatMoneda, getUser } from '../api'
 import AppIcon from '../components/AppIcon.vue'
+import { ok, err } from '../toast'
+import { confirmar } from '../confirm'
 
 const activos = ref([])
 const catalogo = ref({ categorias: [], ubicaciones: [], custodios: [], marcas: [] })
@@ -17,6 +19,10 @@ const fEstado = ref('')
 
 const filtrosAplicados = ref({})
 const total = ref(0)
+const pagina = ref(1)
+const porPagina = ref(50)
+
+const totalPaginas = computed(() => Math.max(1, Math.ceil(total.value / porPagina.value)))
 
 const mostrar = ref(false)
 const editando = ref(null)
@@ -26,6 +32,7 @@ const guardando = ref(false)
 const exportando = ref(false)
 const qrAbierto = ref(false)
 const qrImagenes = ref([])
+const qrTotal = ref(0)
 const generandoQr = ref(false)
 
 const movAbierto = ref(false)
@@ -37,6 +44,19 @@ const user = computed(() => getUser())
 const esAdmin = computed(() => user.value?.rol === 'admin')
 
 const ESTADOS = ['ACTIVO', 'BAJA']
+
+const nome = (lista, id) => lista.find((x) => x.id === Number(id))?.nombre || ''
+
+const chips = computed(() => {
+  const f = filtrosAplicados.value
+  const out = []
+  if (f.q) out.push({ k: 'q', texto: `«${f.q}»` })
+  if (f.categoria) out.push({ k: 'categoria', texto: nome(catalogo.value.categorias, f.categoria) })
+  if (f.ubicacion) out.push({ k: 'ubicacion', texto: nome(catalogo.value.ubicaciones, f.ubicacion) })
+  if (f.custodio) out.push({ k: 'custodio', texto: nome(catalogo.value.custodios, f.custodio) })
+  if (f.estado) out.push({ k: 'estado', texto: f.estado })
+  return out
+})
 
 function emptyForm() {
   return {
@@ -61,9 +81,12 @@ async function cargar() {
   errores.value = ''
   try {
     const params = filtrosQuery()
+    params.set('limite', String(porPagina.value))
+    params.set('offset', String((pagina.value - 1) * porPagina.value))
     const res = await api.get('/api/activos?' + params.toString())
     activos.value = res.activos
     total.value = res.total
+    if (total.value && pagina.value > totalPaginas.value) pagina.value = totalPaginas.value
   } catch (e) { errores.value = e.message } finally { loading.value = false }
 }
 
@@ -72,6 +95,7 @@ async function cargarCatalogo() {
 }
 
 function aplicar() {
+  pagina.value = 1
   filtrosAplicados.value = { q: q.value.trim(), categoria: fCategoria.value, ubicacion: fUbicacion.value, custodio: fResponsable.value, estado: fEstado.value }
   cargar()
 }
@@ -79,6 +103,22 @@ function aplicar() {
 function limpiar() {
   q.value = ''; fCategoria.value = ''; fUbicacion.value = ''; fResponsable.value = ''; fEstado.value = ''
   filtrosAplicados.value = {}
+  if (pagina.value !== 1) pagina.value = 1
+  cargar()
+}
+
+function quitarChip(k) {
+  if (k === 'q') q.value = ''
+  if (k === 'categoria') fCategoria.value = ''
+  if (k === 'ubicacion') fUbicacion.value = ''
+  if (k === 'custodio') fResponsable.value = ''
+  if (k === 'estado') fEstado.value = ''
+  aplicar()
+}
+
+function irPagina(p) {
+  if (p < 1 || p > totalPaginas.value) return
+  pagina.value = p
   cargar()
 }
 
@@ -112,19 +152,30 @@ async function guardar() {
       body[k] = body[k] === '' ? null : Number(body[k])
     }
     if (!body.fecha_adquisicion) body.fecha_adquisicion = null
-    if (editando.value) await api.put(`/api/activos/${editando.value.id}`, body)
-    else await api.post('/api/activos', body)
+    if (editando.value) {
+      await api.put(`/api/activos/${editando.value.id}`, body)
+      ok('Activo actualizado')
+    } else {
+      await api.post('/api/activos', body)
+      ok('Activo creado')
+    }
     mostrar.value = false
     cargar()
   } catch (e) { errores.value = e.message } finally { guardando.value = false }
 }
 
-async function eliminar(a) {
-  if (!confirm(`¿Eliminar "${a.descripcion}"?`)) return
-  try {
-    await api.del(`/api/activos/${a.id}`)
-    cargar()
-  } catch (e) { alert(e.message) }
+function eliminar(a) {
+  confirmar({
+    titulo: 'Eliminar activo',
+    mensaje: `¿Eliminar definitivamente "${a.codigo || a.descripcion}" — ${a.descripcion}? Esta acción no se puede deshacer.`,
+    peligro: true
+  }, async () => {
+    try {
+      await api.del(`/api/activos/${a.id}`)
+      ok('Activo eliminado')
+      cargar()
+    } catch (e) { err(e.message) }
+  })
 }
 
 async function exportarExcel() {
@@ -133,6 +184,7 @@ async function exportarExcel() {
   try {
     const qs = filtrosQuery().toString()
     await api.download('/api/activos/export' + (qs ? '?' + qs : ''), 'AFT-Camaguey-' + new Date().toISOString().slice(0, 10) + '.xlsx')
+    ok('Inventario exportado a Excel')
   } catch (e) { errores.value = e.message } finally { exportando.value = false }
 }
 
@@ -141,8 +193,10 @@ async function generarEtiquetas() {
   generandoQr.value = true
   qrImagenes.value = []
   try {
-    const items = activos.value
-    const imgs = await Promise.all(items.map(async (a) => {
+    const qs = filtrosQuery().toString()
+    const res = await api.get('/api/activos' + (qs ? '?' + qs + '&' : '?') + 'limite=1000')
+    qrTotal.value = res.total
+    const imgs = await Promise.all(res.activos.map(async (a) => {
       const linea = `AFT ${a.codigo || ('ID ' + a.id)}\n${a.descripcion}\n${a.marca || ''} ${a.modelo || ''}`.trim()
       return { ...a, qr: await QRCode.toDataURL(linea, { margin: 1, width: 320 }) }
     }))
@@ -178,7 +232,6 @@ function descMov(m) {
 
 function tipoBadge(m) {
   if (m.tipo === 'CREADO') return 'ok'
-  if (m.tipo === 'CAMBIAR_ESTADO') return 'warn'
   return 'warn'
 }
 
@@ -198,7 +251,7 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
       </div>
       <span class="btns">
         <button class="btn sec sm" :disabled="exportando" @click="exportarExcel" title="Exportar inventario a Excel"><AppIcon name="file" :size="15" /> {{ exportando ? 'Exportando…' : 'Excel' }}</button>
-        <button class="btn sec sm" :disabled="!activos.length" @click="generarEtiquetas" title="Generar etiquetas QR de los activos visibles"><AppIcon name="qr" :size="15" /> QR</button>
+        <button class="btn sec sm" :disabled="!total" @click="generarEtiquetas" title="Generar etiquetas QR de los activos filtrados"><AppIcon name="qr" :size="15" /> QR</button>
         <button class="btn sm" @click="abrirNuevo"><AppIcon name="plus" :size="15" /> Nuevo activo</button>
       </span>
     </div>
@@ -215,35 +268,64 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
       </span>
     </div>
 
-    <div v-if="loading" class="center"><span class="spinner"></span></div>
-    <p v-else-if="errores && !activos.length" class="err">{{ errores }}</p>
-
-    <div v-else class="card table-wrap">
-      <table class="tbl">
-        <thead>
-          <tr><th>Código</th><th>Descripción</th><th>Marca</th><th>Modelo</th><th>Categoría</th><th>Ubicación</th><th>Responsable</th><th>Valor CUP</th><th>Valor USD</th><th>Estado</th><th></th></tr>
-        </thead>
-        <tbody>
-          <tr v-for="a in activos" :key="a.id">
-            <td>{{ a.codigo || '—' }}</td>
-            <td><b>{{ a.descripcion }}</b></td>
-            <td>{{ a.marca || '—' }}</td>
-            <td>{{ a.modelo || '—' }}</td>
-            <td>{{ a.categoria || '—' }}</td>
-            <td>{{ a.ubicacion || '—' }}</td>
-            <td>{{ a.custodio || '—' }}</td>
-            <td>{{ formatMoneda(a.valor_cup) }}</td>
-            <td>{{ formatMoneda(a.valor_usd) }}</td>
-            <td><span class="badge" :class="a.estado === 'ACTIVO' ? 'ok' : 'warn'">{{ a.estado }}</span></td>
-            <td class="acciones">
-              <button class="btn sec sm" @click="verHistorial(a)" title="Historial de movimientos"><AppIcon name="clock" :size="14" /></button>
-              <button class="btn sec sm" @click="editar(a)" title="Editar"><AppIcon name="edit" :size="14" /></button>
-              <button v-if="esAdmin" class="btn danger sm" @click="eliminar(a)" title="Eliminar"><AppIcon name="trash" :size="14" /></button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+    <div v-if="chips.length" class="chips">
+      <span v-for="c in chips" :key="c.k" class="chip">
+        {{ c.texto }} <button class="chip-x" title="Quitar filtro" @click="quitarChip(c.k)"><AppIcon name="x" :size="12" /></button>
+      </span>
     </div>
+
+    <div v-if="loading" class="center"><span class="spinner"></span></div>
+    <p v-else-if="errores" class="err">{{ errores }}</p>
+
+    <div v-else-if="!activos.length" class="card vacio">
+      <AppIcon name="box" :size="44" />
+      <p>No hay activos{{ total ? ' con los filtros aplicados' : ' registrados todavía' }}.</p>
+      <button v-if="total" class="btn sec sm" @click="limpiar">Limpiar filtros</button>
+    </div>
+
+    <template v-else>
+      <div class="card table-wrap">
+        <table class="tbl">
+          <thead>
+            <tr><th>Código</th><th>Descripción</th><th>Marca</th><th>Modelo</th><th>Categoría</th><th>Ubicación</th><th>Responsable</th><th>Valor CUP</th><th>Valor USD</th><th>Estado</th><th></th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="a in activos" :key="a.id">
+              <td><b class="codigo">{{ a.codigo || '—' }}</b></td>
+              <td><b>{{ a.descripcion }}</b></td>
+              <td>{{ a.marca || '—' }}</td>
+              <td>{{ a.modelo || '—' }}</td>
+              <td>{{ a.categoria || '—' }}</td>
+              <td>{{ a.ubicacion || '—' }}</td>
+              <td>{{ a.custodio || '—' }}</td>
+              <td>{{ formatMoneda(a.valor_cup) }}</td>
+              <td>{{ formatMoneda(a.valor_usd) }}</td>
+              <td><span class="badge" :class="a.estado === 'ACTIVO' ? 'ok' : 'warn'">{{ a.estado }}</span></td>
+              <td class="acciones">
+                <button class="btn sec sm" @click="verHistorial(a)" title="Historial de movimientos"><AppIcon name="clock" :size="14" /></button>
+                <button class="btn sec sm" @click="editar(a)" title="Editar"><AppIcon name="edit" :size="14" /></button>
+                <button v-if="esAdmin" class="btn danger sm" @click="eliminar(a)" title="Eliminar"><AppIcon name="trash" :size="14" /></button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="paginacion">
+        <label class="pag-lbl">Por página</label>
+        <select v-model="porPagina" class="select pag-size" @change="pagina = 1; cargar()">
+          <option :value="25">25</option>
+          <option :value="50">50</option>
+          <option :value="100">100</option>
+          <option :value="200">200</option>
+        </select>
+        <span class="pg-info">Página {{ pagina }} de {{ totalPaginas }} · {{ total }} registros</span>
+        <span class="pg-btns">
+          <button class="btn sec sm" :disabled="pagina <= 1" @click="irPagina(pagina - 1)">‹ Anterior</button>
+          <button class="btn sec sm" :disabled="pagina >= totalPaginas" @click="irPagina(pagina + 1)">Siguiente ›</button>
+        </span>
+      </div>
+    </template>
 
     <div v-if="mostrar" class="modal-overlay" @click.self="mostrar = false">
       <div class="modal">
@@ -251,7 +333,7 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
         <div class="modal-body">
           <p v-if="errores" class="err">{{ errores }}</p>
           <div class="form-grid">
-            <div class="field"><label>Código</label><input v-model="formulario.codigo" class="input" placeholder="Opcional" /></div>
+            <div class="field"><label>Código</label><input v-model="formulario.codigo" class="input" placeholder="En blanco = automático" /></div>
             <div class="field"><label>Estado</label>
               <select v-model="formulario.estado" class="select"><option v-for="e in ESTADOS" :key="e" :value="e">{{ e }}</option></select>
             </div>
@@ -312,7 +394,7 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
         <div class="modal-head">Etiquetas QR <button class="close" @click="qrAbierto = false">×</button></div>
         <div class="modal-body">
           <p v-if="errores" class="err">{{ errores }}</p>
-          <p class="muted">{{ qrImagenes.length }} etiqueta(s) para los {{ total }} activos visibles.</p>
+          <p class="muted">{{ qrImagenes.length }} etiqueta(s) de {{ qrTotal }} activo(s) que coinciden con el filtro.</p>
           <div v-if="generandoQr && !qrImagenes.length" class="center"><span class="spinner"></span></div>
           <div v-else class="qr-sheet">
             <div v-for="a in qrImagenes" :key="a.id" class="qr-label">
@@ -335,14 +417,34 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
 </template>
 
 <style scoped>
-.head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
 .head h2 { margin: 0; } .muted { color: var(--muted); margin: 4px 0 0; }
 .head .btns { display: flex; gap: 8px; align-items: center; }
 .acciones { display: flex; gap: 6px; }
-.filtros { display: flex; gap: 10px; padding: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.codigo { color: var(--primary); font-variant-numeric: tabular-nums; }
+.filtros { display: flex; gap: 10px; padding: 12px; margin-bottom: 10px; flex-wrap: wrap; }
 .filtros .input { flex: 1 1 220px; }
 .filtros .select { flex: 0 1 200px; }
 .filtros .btns { display: flex; gap: 6px; align-items: center; }
+
+.chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px;
+  background: #eef4ff; color: var(--primary-dark); border: 1px solid #c9dcff;
+  border-radius: 999px; font-size: 12px; font-weight: 600;
+}
+.chip-x { background: none; border: none; padding: 0; cursor: pointer; color: var(--primary-dark); display: flex; opacity: 0.6; }
+.chip-x:hover { opacity: 1; }
+
 .center { display: grid; place-items: center; padding: 60px; }
 .err { color: var(--danger); font-weight: 600; }
+
+.vacio { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 60px 20px; color: var(--muted); text-align: center; }
+.vacio svg { color: #c4cbd8; }
+
+.paginacion { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.pag-lbl { font-size: 12px; color: var(--muted); font-weight: 600; }
+.pag-size { width: 80px; }
+.pg-info { flex: 1; font-size: 12px; color: var(--muted); }
+.pg-btns { display: flex; gap: 6px; }
 </style>
