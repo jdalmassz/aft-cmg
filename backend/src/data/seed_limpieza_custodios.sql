@@ -13,4 +13,15 @@ SET custodio_id = d.id, updated_at = now()
 FROM (SELECT id FROM custodios WHERE nombre = 'ALFREDO LAUDELINO HERNANDEZ OLIVA') d
 WHERE a.custodio_id = (SELECT id FROM custodios WHERE nombre = 'ALFREDO HERNANDEZ OLIVA');
 
+-- Repuntar los movimientos previos que referenciaban al custodia duplicado
+UPDATE movimientos m
+SET custodio_destino_id = d.id
+FROM (SELECT id FROM custodios WHERE nombre = 'ALFREDO LAUDELINO HERNANDEZ OLIVA') d
+WHERE m.custodio_destino_id = (SELECT id FROM custodios WHERE nombre = 'ALFREDO HERNANDEZ OLIVA');
+
+UPDATE movimientos m
+SET custodio_origen_id = d.id
+FROM (SELECT id FROM custodios WHERE nombre = 'ALFREDO LAUDELINO HERNANDEZ OLIVA') d
+WHERE m.custodio_origen_id = (SELECT id FROM custodios WHERE nombre = 'ALFREDO HERNANDEZ OLIVA');
+
 DELETE FROM custodios WHERE nombre = 'ALFREDO HERNANDEZ OLIVA';
