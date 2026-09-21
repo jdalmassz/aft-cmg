@@ -259,7 +259,7 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
     <div class="head">
       <div>
         <h2>Inventario de Activos</h2>
-        <p class="muted">{{ total }} registro(s) — sucursal Camagüey</p>
+        <p class="muted">{{ total }} registro(s) — sucursal Camagüey · <span class="hint">toca una fila para ver todos los detalles</span></p>
       </div>
       <span class="btns">
         <button class="btn sec sm" :class="{ on: filasCompactas }" @click="toggleCompacto" :title="filasCompactas ? 'Filas normales' : 'Filas compactas (ver más registros)'"><AppIcon name="rows" :size="15" /> <span class="hbt">Compacto</span></button>
@@ -300,19 +300,15 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
       <div class="card table-wrap">
         <table class="tbl" :class="{ compact: filasCompactas }">
           <thead>
-            <tr><th>Código</th><th>Descripción</th><th>Marca</th><th>Modelo</th><th>Categoría</th><th>Ubicación</th><th>Responsable</th><th>Valor CUP</th><th>Valor USD</th><th>Estado</th><th></th></tr>
+            <tr><th>Código</th><th>Descripción</th><th>Ubicación</th><th>Responsable</th><th>Valor USD</th><th>Estado</th><th></th></tr>
           </thead>
           <tbody>
             <template v-for="a in activos" :key="a.id">
               <tr :class="{ 'fila-act': filaAbierta === a.id }" @click="toggleFila(a.id)">
                 <td><b class="codigo">{{ a.codigo || '—' }}</b></td>
                 <td><b>{{ a.descripcion }}</b></td>
-                <td>{{ a.marca || '—' }}</td>
-                <td>{{ a.modelo || '—' }}</td>
-                <td>{{ a.categoria || '—' }}</td>
                 <td>{{ a.ubicacion || '—' }}</td>
                 <td>{{ a.custodio || '—' }}</td>
-                <td>{{ formatMoneda(a.valor_cup) }}</td>
                 <td>{{ formatMoneda(a.valor_usd) }}</td>
                 <td><span class="badge" :class="a.estado === 'ACTIVO' ? 'ok' : 'warn'">{{ a.estado }}</span></td>
                 <td class="acciones">
@@ -322,7 +318,7 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
                 </td>
               </tr>
               <tr v-if="filaAbierta === a.id" class="fila-det">
-                <td colspan="11">
+                <td colspan="7">
                   <div class="det-grid">
                     <div class="det"><span>Código</span><b>{{ a.codigo || '—' }}</b></div>
                     <div class="det"><span>Estado</span><span class="badge" :class="a.estado === 'ACTIVO' ? 'ok' : 'warn'">{{ a.estado }}</span></div>
@@ -461,6 +457,7 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
 <style scoped>
 .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
 .head h2 { margin: 0; } .muted { color: var(--muted); margin: 4px 0 0; }
+.hint { font-style: italic; opacity: 0.85; }
 .head .btns { display: flex; gap: 8px; align-items: center; }
 .acciones { display: flex; gap: 6px; }
 .codigo { color: var(--primary); font-variant-numeric: tabular-nums; }
