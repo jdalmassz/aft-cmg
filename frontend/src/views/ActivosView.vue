@@ -36,7 +36,6 @@ const qrTotal = ref(0)
 const generandoQr = ref(false)
 
 const histDrawer = ref(false)
-const movActivo = ref(null)
 const movimientos = ref([])
 const cargandoMov = ref(false)
 
@@ -255,7 +254,6 @@ async function generarEtiquetas() {
 function imprimir() { window.print() }
 
 async function verHistorial(a) {
-  movActivo.value = a
   histDrawer.value = true
   cargandoMov.value = true
   movimientos.value = []
@@ -454,7 +452,11 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
           </template>
         </div>
         <div class="drawer-foot">
-          <template v-if="editDrawer">
+          <template v-if="histDrawer">
+            <button class="btn sec" @click="histDrawer = false"><AppIcon name="arrow-left" :size="15" /> Volver al detalle</button>
+            <button class="btn sec" @click="cerrarDrawer">Cerrar</button>
+          </template>
+          <template v-else-if="editDrawer">
             <button class="btn sec" @click="editDrawer = false">Cancelar</button>
             <button class="btn" :disabled="guardando" @click="guardar">{{ guardando ? 'Guardando…' : 'Guardar cambios' }}</button>
           </template>
@@ -503,37 +505,6 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
         </div>
       </div>
     </div>
-
-    <transition name="drawer">
-      <aside v-if="histDrawer" class="drawer dir-left">
-        <div class="drawer-head">
-          <div class="drawer-title">
-            <b>Historial</b>
-            <span class="muted">{{ movActivo?.codigo || '' }}{{ movActivo ? ' — ' + movActivo.descripcion : '' }}</span>
-          </div>
-          <button class="close" @click="histDrawer = false">×</button>
-        </div>
-        <div class="drawer-body">
-          <p v-if="errores" class="err">{{ errores }}</p>
-          <div v-if="cargandoMov" class="center"><span class="spinner"></span></div>
-          <p v-else-if="!movimientos.length" class="muted">Sin movimientos registrados.</p>
-          <div v-else class="timeline">
-            <div v-for="m in movimientos" :key="m.id" class="tl-item">
-              <div class="tl-dot"></div>
-              <div class="tl-body">
-                <div class="tl-head">
-                  <span class="badge" :class="tipoBadge(m)">{{ m.tipo.replace(/_/g, ' ') }}</span>
-                  <span class="muted tl-fecha">{{ fmtFecha(m.created_at) }}</span>
-                </div>
-                <p class="tl-desc">{{ descMov(m) }}</p>
-                <p v-if="m.comentario" class="muted">«{{ m.comentario }}»</p>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="drawer-foot"><button class="btn sec" @click="histDrawer = false">Cerrar</button></div>
-      </aside>
-    </transition>
 
     <div v-if="qrAbierto" class="modal-overlay" @click.self="qrAbierto = false">
       <div class="modal qr-modal">
@@ -609,21 +580,17 @@ table.tbl.compact th, table.tbl.compact td { padding: 5px 9px; font-size: 12.5px
   display: flex; flex-direction: column;
 }
 .drawer-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 16px 18px; border-bottom: 1px solid var(--border); }
-.drawer-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.drawer-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.drawer-title-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .drawer-title .codigo { font-size: 15px; }
 .drawer-title .muted { font-size: 13px; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.back { background: none; border: none; cursor: pointer; color: var(--muted); padding: 4px; border-radius: 6px; display: flex; flex-shrink: 0; }
+.back:hover { color: var(--primary); background: #eef4ff; }
 .drawer-body { flex: 1; overflow-y: auto; padding: 16px 18px; }
 .drawer-body.drawer-form .form-grid { grid-template-columns: 1fr; }
 .drawer-body.drawer-form .field.full { grid-column: auto; }
 .drawer-foot { display: flex; gap: 8px; flex-wrap: wrap; padding: 14px 18px; border-top: 1px solid var(--border); }
 .drawer-foot .btn { flex: 1; justify-content: center; }
-.drawer.dir-left { left: 0; right: auto; box-shadow: 12px 0 40px rgba(15,23,42,0.22); }
-
-@keyframes drawer-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
-.drawer-enter-active, .drawer-leave-active { transition: transform 0.22s ease, opacity 0.22s ease; }
-.drawer-enter-from, .drawer-leave-to { transform: translateX(100%); opacity: 0; }
-.drawer-enter-to, .drawer-leave-from { transform: translateX(0); opacity: 1; }
-.drawer.dir-left.drawer-enter-from, .drawer.dir-left.drawer-leave-to { transform: translateX(-100%); }
 
 @keyframes drawer-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
 .drawer-enter-active, .drawer-leave-active { transition: transform 0.22s ease, opacity 0.22s ease; }
