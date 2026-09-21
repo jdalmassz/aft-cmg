@@ -60,3 +60,28 @@ CREATE INDEX IF NOT EXISTS idx_activos_categoria ON activos(categoria_id);
 CREATE INDEX IF NOT EXISTS idx_activos_ubicacion ON activos(ubicacion_id);
 CREATE INDEX IF NOT EXISTS idx_activos_custodio ON activos(custodio_id);
 CREATE INDEX IF NOT EXISTS idx_activos_descripcion ON activos(descripcion);
+
+-- Historial de movimientos de los activos (logística)
+CREATE TABLE IF NOT EXISTS movimientos (
+  id SERIAL PRIMARY KEY,
+  activo_id INTEGER NOT NULL REFERENCES activos(id) ON DELETE CASCADE,
+  tipo TEXT NOT NULL, -- CREADO | TRASLADO_UBICACION | CAMBIO_CUSTODIO | CAMBIAR_ESTADO
+  ubicacion_origen_id INTEGER REFERENCES ubicaciones(id),
+  ubicacion_destino_id INTEGER REFERENCES ubicaciones(id),
+  custodio_origen_id INTEGER REFERENCES custodios(id),
+  custodio_destino_id INTEGER REFERENCES custodios(id),
+  estado_origen TEXT,
+  estado_destino TEXT,
+  comentario TEXT,
+  usuario_id TEXT REFERENCES users(id),
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_movimientos_activo ON movimientos(activo_id);
+CREATE INDEX IF NOT EXISTS idx_movimientos_fecha ON movimientos(created_at DESC);
+
+-- Backfill idempotente: registro inicial de activos existentes antes del historial
+INSERT INTO movimientos (activo_id, tipo, ubicacion_destino_id, custodio_destino_id, estado_destino)
+SELECT a.id, 'CREADO', a.ubicacion_id, a.custodio_id, a.estado
+FROM activos a
+WHERE NOT EXISTS (SELECT 1 FROM movimientos m WHERE m.activo_id = a.id);
