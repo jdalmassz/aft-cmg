@@ -12,7 +12,7 @@ const errores = ref('')
 const q = ref('')
 const fCategoria = ref('')
 const fUbicacion = ref('')
-const fCustodio = ref('')
+const fResponsable = ref('')
 const fEstado = ref('')
 
 const filtrosAplicados = ref({})
@@ -72,12 +72,12 @@ async function cargarCatalogo() {
 }
 
 function aplicar() {
-  filtrosAplicados.value = { q: q.value.trim(), categoria: fCategoria.value, ubicacion: fUbicacion.value, custodio: fCustodio.value, estado: fEstado.value }
+  filtrosAplicados.value = { q: q.value.trim(), categoria: fCategoria.value, ubicacion: fUbicacion.value, custodio: fResponsable.value, estado: fEstado.value }
   cargar()
 }
 
 function limpiar() {
-  q.value = ''; fCategoria.value = ''; fUbicacion.value = ''; fCustodio.value = ''; fEstado.value = ''
+  q.value = ''; fCategoria.value = ''; fUbicacion.value = ''; fResponsable.value = ''; fEstado.value = ''
   filtrosAplicados.value = {}
   cargar()
 }
@@ -205,10 +205,10 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
 
     <div class="card filtros">
       <input v-model="q" class="input" placeholder="Buscar por descripción, modelo, código…" @keyup.enter="aplicar" />
-      <select v-model="fCategoria" class="select"><option value="">Categoría</option><option v-for="c in catalogo.categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
-      <select v-model="fUbicacion" class="select"><option value="">Ubicación</option><option v-for="u in catalogo.ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}</option></select>
-      <select v-model="fCustodio" class="select"><option value="">Responsable</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
-      <select v-model="fEstado" class="select"><option value="">Estado</option><option v-for="e in ESTADOS" :key="e" :value="e">{{ e }}</option></select>
+      <select v-model="fCategoria" class="select" @change="aplicar"><option value="">Categoría</option><option v-for="c in catalogo.categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
+      <select v-model="fUbicacion" class="select" @change="aplicar"><option value="">Ubicación</option><option v-for="u in catalogo.ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}</option></select>
+      <select v-model="fResponsable" class="select" @change="aplicar"><option value="">Responsable</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
+      <select v-model="fEstado" class="select" @change="aplicar"><option value="">Estado</option><option v-for="e in ESTADOS" :key="e" :value="e">{{ e }}</option></select>
       <span class="btns">
         <button class="btn sm" @click="aplicar">Filtrar</button>
         <button class="btn sec sm" @click="limpiar">Limpiar</button>
