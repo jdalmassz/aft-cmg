@@ -10,11 +10,12 @@ Procovar-camaguey) con PostgreSQL 16.
 ## Funcionalidades
 
 - Login local con JWT (roles admin/usuario) y gestión de usuarios.
-- Inventario con buscador y filtros (categoría, ubicación, custodio, estado).
+- Inventario con buscador y filtros (categoría, ubicación, responsable, estado).
 - **Historial de movimientos** por activo (creación, traslados de ubicación,
   cambios de custodio y estado).
 - **Exportación a Excel** (.xlsx) del inventario filtrado.
 - **Etiquetas QR** imprimibles para cada activo.
+- **Código automático** (`AFT-####`) para activos sin código.
 - Dashboard con totales, valores, distribución por categoría/ubicación/estado.
 
 ## Stack

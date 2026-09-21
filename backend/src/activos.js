@@ -124,15 +124,19 @@ async function createActivo(req, res, next) {
       `INSERT INTO activos (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING id`,
       values
     );
+    const nuevoId = r.rows[0].id;
+    if (!values[keys.indexOf('codigo')]) {
+      await db.getPool().query(`UPDATE activos SET codigo = 'AFT-' || LPAD($1::text, 4, '0') WHERE id = $1`, [nuevoId]);
+    }
     await registerMovimiento(db.getPool(), {
-      activo_id: r.rows[0].id,
+      activo_id: nuevoId,
       tipo: 'CREADO',
       ubicacion_destino_id: b.ubicacion_id || null,
       custodio_destino_id: b.custodio_id || null,
       estado_destino: b.estado || 'ACTIVO',
       usuario_id: req.user?.id || null
     });
-    const row = await db.getPool().query(`SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} WHERE a.id = $1`, [r.rows[0].id]);
+    const row = await db.getPool().query(`SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} WHERE a.id = $1`, [nuevoId]);
     return res.status(201).json(row.rows[0]);
   } catch (e) { next(e); }
 }

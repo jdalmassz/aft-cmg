@@ -30,7 +30,7 @@ onMounted(async () => {
         <div class="card kpi"><span class="kpi-v">{{ data.total }}</span><span class="kpi-l">Activos registrados</span></div>
         <div class="card kpi"><span class="kpi-v">${{ formatMoneda(data.valores.valor_usd) }}</span><span class="kpi-l">Valor total (USD)</span></div>
         <div class="card kpi"><span class="kpi-v">{{ data.porEstado.find(e => e.estado === 'ACTIVO')?.cantidad || 0 }}</span><span class="kpi-l">En activo</span></div>
-        <div class="card kpi"><span class="kpi-v">{{ data.custodiosTop.length }}</span><span class="kpi-l">Custodios</span></div>
+        <div class="card kpi"><span class="kpi-v">{{ data.custodiosTop.length }}</span><span class="kpi-l">Responsables</span></div>
       </div>
 
       <div class="grid2">
@@ -61,7 +61,7 @@ onMounted(async () => {
         <h3>Últimos agregados</h3>
         <div class="table-wrap">
           <table class="tbl">
-            <thead><tr><th>Descripción</th><th>Marca</th><th>Ubicación</th><th>Custodio</th><th>Valor USD</th></tr></thead>
+            <thead><tr><th>Descripción</th><th>Marca</th><th>Ubicación</th><th>Responsable</th><th>Valor USD</th></tr></thead>
             <tbody>
               <tr v-for="a in data.recientes" :key="a.id">
                 <td>{{ a.descripcion }}</td><td>{{ a.marca || '—' }}</td>

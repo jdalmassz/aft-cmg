@@ -85,3 +85,7 @@ INSERT INTO movimientos (activo_id, tipo, ubicacion_destino_id, custodio_destino
 SELECT a.id, 'CREADO', a.ubicacion_id, a.custodio_id, a.estado
 FROM activos a
 WHERE NOT EXISTS (SELECT 1 FROM movimientos m WHERE m.activo_id = a.id);
+
+-- Backfill idempotente: código automático para activos sin código
+UPDATE activos SET codigo = 'AFT-' || LPAD(id::text, 4, '0')
+WHERE codigo IS NULL OR codigo = '';
