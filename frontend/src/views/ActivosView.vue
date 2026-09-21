@@ -43,6 +43,18 @@ const cargandoMov = ref(false)
 const user = computed(() => getUser())
 const esAdmin = computed(() => user.value?.rol === 'admin')
 
+const filasCompactas = ref(localStorage.getItem('aft_compact') === '1')
+const filaAbierta = ref(null)
+
+function toggleCompacto() {
+  filasCompactas.value = !filasCompactas.value
+  localStorage.setItem('aft_compact', filasCompactas.value ? '1' : '0')
+}
+
+function toggleFila(id) {
+  filaAbierta.value = filaAbierta.value === id ? null : id
+}
+
 const ESTADOS = ['ACTIVO', 'BAJA']
 
 const nome = (lista, id) => lista.find((x) => x.id === Number(id))?.nombre || ''
@@ -250,6 +262,7 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
         <p class="muted">{{ total }} registro(s) — sucursal Camagüey</p>
       </div>
       <span class="btns">
+        <button class="btn sec sm" :class="{ on: filasCompactas }" @click="toggleCompacto" :title="filasCompactas ? 'Filas normales' : 'Filas compactas (ver más registros)'"><AppIcon name="rows" :size="15" /> <span class="hbt">Compacto</span></button>
         <button class="btn sec sm" :disabled="exportando" @click="exportarExcel" title="Exportar inventario a Excel"><AppIcon name="file" :size="15" /> {{ exportando ? 'Exportando…' : 'Excel' }}</button>
         <button class="btn sec sm" :disabled="!total" @click="generarEtiquetas" title="Generar etiquetas QR de los activos filtrados"><AppIcon name="qr" :size="15" /> QR</button>
         <button class="btn sm" @click="abrirNuevo"><AppIcon name="plus" :size="15" /> Nuevo activo</button>
@@ -285,28 +298,57 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
 
     <template v-else>
       <div class="card table-wrap">
-        <table class="tbl">
+        <table class="tbl" :class="{ compact: filasCompactas }">
           <thead>
             <tr><th>Código</th><th>Descripción</th><th>Marca</th><th>Modelo</th><th>Categoría</th><th>Ubicación</th><th>Responsable</th><th>Valor CUP</th><th>Valor USD</th><th>Estado</th><th></th></tr>
           </thead>
           <tbody>
-            <tr v-for="a in activos" :key="a.id">
-              <td><b class="codigo">{{ a.codigo || '—' }}</b></td>
-              <td><b>{{ a.descripcion }}</b></td>
-              <td>{{ a.marca || '—' }}</td>
-              <td>{{ a.modelo || '—' }}</td>
-              <td>{{ a.categoria || '—' }}</td>
-              <td>{{ a.ubicacion || '—' }}</td>
-              <td>{{ a.custodio || '—' }}</td>
-              <td>{{ formatMoneda(a.valor_cup) }}</td>
-              <td>{{ formatMoneda(a.valor_usd) }}</td>
-              <td><span class="badge" :class="a.estado === 'ACTIVO' ? 'ok' : 'warn'">{{ a.estado }}</span></td>
-              <td class="acciones">
-                <button class="btn sec sm" @click="verHistorial(a)" title="Historial de movimientos"><AppIcon name="clock" :size="14" /></button>
-                <button class="btn sec sm" @click="editar(a)" title="Editar"><AppIcon name="edit" :size="14" /></button>
-                <button v-if="esAdmin" class="btn danger sm" @click="eliminar(a)" title="Eliminar"><AppIcon name="trash" :size="14" /></button>
-              </td>
-            </tr>
+            <template v-for="a in activos" :key="a.id">
+              <tr :class="{ 'fila-act': filaAbierta === a.id }" @click="toggleFila(a.id)">
+                <td><b class="codigo">{{ a.codigo || '—' }}</b></td>
+                <td><b>{{ a.descripcion }}</b></td>
+                <td>{{ a.marca || '—' }}</td>
+                <td>{{ a.modelo || '—' }}</td>
+                <td>{{ a.categoria || '—' }}</td>
+                <td>{{ a.ubicacion || '—' }}</td>
+                <td>{{ a.custodio || '—' }}</td>
+                <td>{{ formatMoneda(a.valor_cup) }}</td>
+                <td>{{ formatMoneda(a.valor_usd) }}</td>
+                <td><span class="badge" :class="a.estado === 'ACTIVO' ? 'ok' : 'warn'">{{ a.estado }}</span></td>
+                <td class="acciones">
+                  <button class="btn sec sm" @click.stop="verHistorial(a)" title="Historial de movimientos"><AppIcon name="clock" :size="14" /></button>
+                  <button class="btn sec sm" @click.stop="editar(a)" title="Editar"><AppIcon name="edit" :size="14" /></button>
+                  <button v-if="esAdmin" class="btn danger sm" @click.stop="eliminar(a)" title="Eliminar"><AppIcon name="trash" :size="14" /></button>
+                </td>
+              </tr>
+              <tr v-if="filaAbierta === a.id" class="fila-det">
+                <td colspan="11">
+                  <div class="det-grid">
+                    <div class="det"><span>Código</span><b>{{ a.codigo || '—' }}</b></div>
+                    <div class="det"><span>Estado</span><span class="badge" :class="a.estado === 'ACTIVO' ? 'ok' : 'warn'">{{ a.estado }}</span></div>
+                    <div class="det"><span>Categoría</span><b>{{ a.categoria || '—' }}</b></div>
+                    <div class="det"><span>Sucursal</span><b>{{ a.sucursal || '—' }}</b></div>
+                    <div class="det"><span>Marca</span><b>{{ a.marca || '—' }}</b></div>
+                    <div class="det"><span>Modelo</span><b>{{ a.modelo || '—' }}</b></div>
+                    <div class="det"><span>Ubicación</span><b>{{ a.ubicacion || '—' }}</b></div>
+                    <div class="det"><span>Responsable</span><b>{{ a.custodio || '—' }}</b></div>
+                    <div class="det"><span>Valor CUP</span><b>{{ formatMoneda(a.valor_cup) }}</b></div>
+                    <div class="det"><span>Valor USD</span><b>{{ formatMoneda(a.valor_usd) }}</b></div>
+                    <div class="det"><span>Fecha de adquisición</span><b>{{ a.fecha_adquisicion || '—' }}</b></div>
+                    <div class="det"><span>Creado</span><b>{{ fmtFecha(a.created_at) }}</b></div>
+                    <div class="det wide"><span>Comentarios</span><b>{{ a.comentarios || '—' }}</b></div>
+                    <div class="det wide">
+                      <span>Acciones</span>
+                      <div class="acciones">
+                        <button class="btn sec sm" @click.stop="verHistorial(a)"><AppIcon name="clock" :size="14" /> Historial</button>
+                        <button class="btn sec sm" @click.stop="editar(a)"><AppIcon name="edit" :size="14" /> Editar</button>
+                        <button v-if="esAdmin" class="btn danger sm" @click.stop="eliminar(a)"><AppIcon name="trash" :size="14" /> Eliminar</button>
+                      </div>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            </template>
           </tbody>
         </table>
       </div>
@@ -447,4 +489,25 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
 .pag-size { width: 80px; }
 .pg-info { flex: 1; font-size: 12px; color: var(--muted); }
 .pg-btns { display: flex; gap: 6px; }
+
+.table-wrap { max-height: calc(100vh - 280px); overflow: auto; }
+table.tbl thead th { position: sticky; top: 0; z-index: 2; }
+table.tbl tbody tr { cursor: pointer; }
+table.tbl tr.fila-act td { background: #eef4ff; }
+table.tbl tr.fila-det td { background: #f7f9fc; padding: 0; }
+table.tbl tr.fila-det td:hover { background: #f7f9fc; }
+table.tbl.compact th, table.tbl.compact td { padding: 5px 9px; font-size: 12.5px; }
+
+.det-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px 18px; padding: 14px 16px; align-items: start; }
+.det { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.det > span { font-size: 10.5px; color: var(--muted); text-transform: uppercase; font-weight: 700; letter-spacing: 0.3px; }
+.det > b { font-size: 13px; font-weight: 600; word-break: break-word; }
+.det.wide { grid-column: 1 / -1; }
+.det .acciones { gap: 8px; }
+
+.btn.on { background: #e0ecff; border-color: var(--primary); color: var(--primary-dark); }
+
+@media (max-width: 640px) {
+  .hbt { display: none; }
+}
 </style>
