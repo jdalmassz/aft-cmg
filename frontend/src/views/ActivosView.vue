@@ -35,7 +35,7 @@ const qrImagenes = ref([])
 const qrTotal = ref(0)
 const generandoQr = ref(false)
 
-const movAbierto = ref(false)
+const histDrawer = ref(false)
 const movActivo = ref(null)
 const movimientos = ref([])
 const cargandoMov = ref(false)
@@ -56,12 +56,14 @@ function toggleCompacto() {
 function abrirActivo(a) {
   activoSel.value = a
   editDrawer.value = false
+  histDrawer.value = false
   drawerAbierto.value = true
 }
 
 function cerrarDrawer() {
   drawerAbierto.value = false
   editDrawer.value = false
+  histDrawer.value = false
   activoSel.value = null
 }
 
@@ -254,7 +256,7 @@ function imprimir() { window.print() }
 
 async function verHistorial(a) {
   movActivo.value = a
-  movAbierto.value = true
+  histDrawer.value = true
   cargandoMov.value = true
   movimientos.value = []
   try {
@@ -477,10 +479,16 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
       </div>
     </div>
 
-    <div v-if="movAbierto" class="modal-overlay" @click.self="movAbierto = false">
-      <div class="modal">
-        <div class="modal-head">Historial — {{ movActivo?.descripcion || '' }} <button class="close" @click="movAbierto = false">×</button></div>
-        <div class="modal-body">
+    <transition name="drawer">
+      <aside v-if="histDrawer" class="drawer dir-left">
+        <div class="drawer-head">
+          <div class="drawer-title">
+            <b>Historial</b>
+            <span class="muted">{{ movActivo?.codigo || '' }}{{ movActivo ? ' — ' + movActivo.descripcion : '' }}</span>
+          </div>
+          <button class="close" @click="histDrawer = false">×</button>
+        </div>
+        <div class="drawer-body">
           <p v-if="errores" class="err">{{ errores }}</p>
           <div v-if="cargandoMov" class="center"><span class="spinner"></span></div>
           <p v-else-if="!movimientos.length" class="muted">Sin movimientos registrados.</p>
@@ -498,9 +506,9 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
             </div>
           </div>
         </div>
-        <div class="modal-foot"><button class="btn sec" @click="movAbierto = false">Cerrar</button></div>
-      </div>
-    </div>
+        <div class="drawer-foot"><button class="btn sec" @click="histDrawer = false">Cerrar</button></div>
+      </aside>
+    </transition>
 
     <div v-if="qrAbierto" class="modal-overlay" @click.self="qrAbierto = false">
       <div class="modal qr-modal">
@@ -585,6 +593,13 @@ table.tbl.compact th, table.tbl.compact td { padding: 5px 9px; font-size: 12.5px
 .drawer-body.drawer-form .field.full { grid-column: auto; }
 .drawer-foot { display: flex; gap: 8px; flex-wrap: wrap; padding: 14px 18px; border-top: 1px solid var(--border); }
 .drawer-foot .btn { flex: 1; justify-content: center; }
+.drawer.dir-left { left: 0; right: auto; box-shadow: 12px 0 40px rgba(15,23,42,0.22); }
+
+@keyframes drawer-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
+.drawer-enter-active, .drawer-leave-active { transition: transform 0.22s ease, opacity 0.22s ease; }
+.drawer-enter-from, .drawer-leave-to { transform: translateX(100%); opacity: 0; }
+.drawer-enter-to, .drawer-leave-from { transform: translateX(0); opacity: 1; }
+.drawer.dir-left.drawer-enter-from, .drawer.dir-left.drawer-leave-to { transform: translateX(-100%); }
 
 @keyframes drawer-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
 .drawer-enter-active, .drawer-leave-active { transition: transform 0.22s ease, opacity 0.22s ease; }
