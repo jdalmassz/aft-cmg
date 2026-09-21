@@ -46,6 +46,7 @@ const esAdmin = computed(() => user.value?.rol === 'admin')
 const filasCompactas = ref(localStorage.getItem('aft_compact') === '1')
 const drawerAbierto = ref(false)
 const activoSel = ref(null)
+const editDrawer = ref(false)
 
 function toggleCompacto() {
   filasCompactas.value = !filasCompactas.value
@@ -54,18 +55,28 @@ function toggleCompacto() {
 
 function abrirActivo(a) {
   activoSel.value = a
+  editDrawer.value = false
   drawerAbierto.value = true
 }
 
 function cerrarDrawer() {
   drawerAbierto.value = false
+  editDrawer.value = false
   activoSel.value = null
 }
 
 function editarDrawer() {
   const a = activoSel.value
-  cerrarDrawer()
-  if (a) editar(a)
+  if (!a) return
+  errores.value = ''
+  formulario.value = {
+    codigo: a.codigo || '', descripcion: a.descripcion, marca_id: a.marca_id || '',
+    modelo: a.modelo || '', valor_cup: a.valor_cup ?? '', valor_usd: a.valor_usd ?? '',
+    categoria_id: a.categoria_id || '', sucursal_id: a.sucursal_id || 1,
+    fecha_adquisicion: a.fecha_adquisicion || '', ubicacion_id: a.ubicacion_id || '',
+    custodio_id: a.custodio_id || '', estado: a.estado || 'ACTIVO', comentarios: a.comentarios || ''
+  }
+  editDrawer.value = true
 }
 
 function eliminarDrawer() {
@@ -183,14 +194,17 @@ async function guardar() {
       body[k] = body[k] === '' ? null : Number(body[k])
     }
     if (!body.fecha_adquisicion) body.fecha_adquisicion = null
-    if (editando.value) {
-      await api.put(`/api/activos/${editando.value.id}`, body)
+    const aid = editando.value ? editando.value.id : activoSel.value?.id
+    if (aid) {
+      await api.put(`/api/activos/${aid}`, body)
       ok('Activo actualizado')
     } else {
       await api.post('/api/activos', body)
       ok('Activo creado')
     }
     mostrar.value = false
+    editDrawer.value = false
+    drawerAbierto.value = false
     cargar()
   } catch (e) { errores.value = e.message } finally { guardando.value = false }
 }
@@ -367,26 +381,61 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
           </div>
           <button class="close" @click="cerrarDrawer">×</button>
         </div>
-        <div class="drawer-body">
-          <div class="det-grid">
-            <div class="det"><span>Estado</span><span class="badge" :class="activoSel.estado === 'ACTIVO' ? 'ok' : 'warn'">{{ activoSel.estado }}</span></div>
-            <div class="det"><span>Categoría</span><b>{{ activoSel.categoria || '—' }}</b></div>
-            <div class="det"><span>Sucursal</span><b>{{ activoSel.sucursal || '—' }}</b></div>
-            <div class="det"><span>Marca</span><b>{{ activoSel.marca || '—' }}</b></div>
-            <div class="det"><span>Modelo</span><b>{{ activoSel.modelo || '—' }}</b></div>
-            <div class="det"><span>Ubicación</span><b>{{ activoSel.ubicacion || '—' }}</b></div>
-            <div class="det"><span>Responsable</span><b>{{ activoSel.custodio || '—' }}</b></div>
-            <div class="det"><span>Valor CUP</span><b>{{ formatMoneda(activoSel.valor_cup) }}</b></div>
-            <div class="det"><span>Valor USD</span><b>{{ formatMoneda(activoSel.valor_usd) }}</b></div>
-            <div class="det"><span>Fecha de adquisición</span><b>{{ activoSel.fecha_adquisicion || '—' }}</b></div>
-            <div class="det"><span>Creado</span><b>{{ fmtFecha(activoSel.created_at) }}</b></div>
-            <div class="det wide"><span>Comentarios</span><b>{{ activoSel.comentarios || '—' }}</b></div>
-          </div>
+        <div class="drawer-body" :class="{ 'drawer-form': editDrawer }">
+          <p v-if="errores" class="err">{{ errores }}</p>
+          <template v-if="editDrawer">
+            <div class="form-grid">
+              <div class="field"><label>Código</label><input v-model="formulario.codigo" class="input" placeholder="En blanco = automático" /></div>
+              <div class="field"><label>Estado</label>
+                <select v-model="formulario.estado" class="select"><option v-for="e in ESTADOS" :key="e" :value="e">{{ e }}</option></select>
+              </div>
+              <div class="field full"><label>Descripción *</label><input v-model="formulario.descripcion" class="input" required /></div>
+              <div class="field"><label>Marca</label>
+                <select v-model="formulario.marca_id" class="select"><option value="">—</option><option v-for="m in catalogo.marcas" :key="m.id" :value="m.id">{{ m.nombre }}</option></select>
+              </div>
+              <div class="field"><label>Modelo</label><input v-model="formulario.modelo" class="input" /></div>
+              <div class="field"><label>Categoría</label>
+                <select v-model="formulario.categoria_id" class="select"><option value="">—</option><option v-for="c in catalogo.categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
+              </div>
+              <div class="field"><label>Ubicación</label>
+                <select v-model="formulario.ubicacion_id" class="select"><option value="">—</option><option v-for="u in catalogo.ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}</option></select>
+              </div>
+              <div class="field"><label>Responsable</label>
+                <select v-model="formulario.custodio_id" class="select"><option value="">—</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
+              </div>
+              <div class="field"><label>Fecha de adquisición</label><input v-model="formulario.fecha_adquisicion" class="input" placeholder="dd-mm-año" /></div>
+              <div class="field"><label>Valor CUP</label><input v-model="formulario.valor_cup" type="number" step="0.01" class="input" /></div>
+              <div class="field"><label>Valor USD</label><input v-model="formulario.valor_usd" type="number" step="0.01" class="input" /></div>
+              <div class="field full"><label>Comentarios</label><textarea v-model="formulario.comentarios" class="textarea" rows="3"></textarea></div>
+            </div>
+          </template>
+          <template v-else>
+            <div class="det-grid">
+              <div class="det"><span>Estado</span><span class="badge" :class="activoSel.estado === 'ACTIVO' ? 'ok' : 'warn'">{{ activoSel.estado }}</span></div>
+              <div class="det"><span>Categoría</span><b>{{ activoSel.categoria || '—' }}</b></div>
+              <div class="det"><span>Sucursal</span><b>{{ activoSel.sucursal || '—' }}</b></div>
+              <div class="det"><span>Marca</span><b>{{ activoSel.marca || '—' }}</b></div>
+              <div class="det"><span>Modelo</span><b>{{ activoSel.modelo || '—' }}</b></div>
+              <div class="det"><span>Ubicación</span><b>{{ activoSel.ubicacion || '—' }}</b></div>
+              <div class="det"><span>Responsable</span><b>{{ activoSel.custodio || '—' }}</b></div>
+              <div class="det"><span>Valor CUP</span><b>{{ formatMoneda(activoSel.valor_cup) }}</b></div>
+              <div class="det"><span>Valor USD</span><b>{{ formatMoneda(activoSel.valor_usd) }}</b></div>
+              <div class="det"><span>Fecha de adquisición</span><b>{{ activoSel.fecha_adquisicion || '—' }}</b></div>
+              <div class="det"><span>Creado</span><b>{{ fmtFecha(activoSel.created_at) }}</b></div>
+              <div class="det wide"><span>Comentarios</span><b>{{ activoSel.comentarios || '—' }}</b></div>
+            </div>
+          </template>
         </div>
         <div class="drawer-foot">
-          <button class="btn sec" @click="verHistorial(activoSel)"><AppIcon name="clock" :size="15" /> Historial</button>
-          <button class="btn sec" @click="editarDrawer"><AppIcon name="edit" :size="15" /> Editar</button>
-          <button v-if="esAdmin" class="btn danger" @click="eliminarDrawer"><AppIcon name="trash" :size="15" /> Eliminar</button>
+          <template v-if="editDrawer">
+            <button class="btn sec" @click="editDrawer = false">Cancelar</button>
+            <button class="btn" :disabled="guardando" @click="guardar">{{ guardando ? 'Guardando…' : 'Guardar cambios' }}</button>
+          </template>
+          <template v-else>
+            <button class="btn sec" @click="verHistorial(activoSel)"><AppIcon name="clock" :size="15" /> Historial</button>
+            <button class="btn sec" @click="editarDrawer"><AppIcon name="edit" :size="15" /> Editar</button>
+            <button v-if="esAdmin" class="btn danger" @click="eliminarDrawer"><AppIcon name="trash" :size="15" /> Eliminar</button>
+          </template>
         </div>
       </aside>
     </transition>
@@ -532,6 +581,8 @@ table.tbl.compact th, table.tbl.compact td { padding: 5px 9px; font-size: 12.5px
 .drawer-title .codigo { font-size: 15px; }
 .drawer-title .muted { font-size: 13px; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .drawer-body { flex: 1; overflow-y: auto; padding: 16px 18px; }
+.drawer-body.drawer-form .form-grid { grid-template-columns: 1fr; }
+.drawer-body.drawer-form .field.full { grid-column: auto; }
 .drawer-foot { display: flex; gap: 8px; flex-wrap: wrap; padding: 14px 18px; border-top: 1px solid var(--border); }
 .drawer-foot .btn { flex: 1; justify-content: center; }
 
