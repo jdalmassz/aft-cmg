@@ -2,6 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import QRCode from 'qrcode'
 import { api, formatMoneda, getUser } from '../api'
+import AppIcon from '../components/AppIcon.vue'
 
 const activos = ref([])
 const catalogo = ref({ categorias: [], ubicaciones: [], custodios: [], marcas: [] })
@@ -196,9 +197,9 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
         <p class="muted">{{ total }} registro(s) — sucursal Camagüey</p>
       </div>
       <span class="btns">
-        <button class="btn sec sm" :disabled="exportando" @click="exportarExcel" title="Exportar inventario a Excel">{{ exportando ? 'Exportando…' : '📄 Excel' }}</button>
-        <button class="btn sec sm" :disabled="!activos.length" @click="generarEtiquetas" title="Generar etiquetas QR de los activos visibles">🖨 QR</button>
-        <button class="btn sm" @click="abrirNuevo">+ Nuevo activo</button>
+        <button class="btn sec sm" :disabled="exportando" @click="exportarExcel" title="Exportar inventario a Excel"><AppIcon name="file" :size="15" /> {{ exportando ? 'Exportando…' : 'Excel' }}</button>
+        <button class="btn sec sm" :disabled="!activos.length" @click="generarEtiquetas" title="Generar etiquetas QR de los activos visibles"><AppIcon name="qr" :size="15" /> QR</button>
+        <button class="btn sm" @click="abrirNuevo"><AppIcon name="plus" :size="15" /> Nuevo activo</button>
       </span>
     </div>
 
@@ -206,7 +207,7 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
       <input v-model="q" class="input" placeholder="Buscar por descripción, modelo, código…" @keyup.enter="aplicar" />
       <select v-model="fCategoria" class="select"><option value="">Categoría</option><option v-for="c in catalogo.categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
       <select v-model="fUbicacion" class="select"><option value="">Ubicación</option><option v-for="u in catalogo.ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}</option></select>
-      <select v-model="fCustodio" class="select"><option value="">Custodio</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
+      <select v-model="fCustodio" class="select"><option value="">Responsable</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
       <select v-model="fEstado" class="select"><option value="">Estado</option><option v-for="e in ESTADOS" :key="e" :value="e">{{ e }}</option></select>
       <span class="btns">
         <button class="btn sm" @click="aplicar">Filtrar</button>
@@ -220,7 +221,7 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
     <div v-else class="card table-wrap">
       <table class="tbl">
         <thead>
-          <tr><th>Código</th><th>Descripción</th><th>Marca</th><th>Modelo</th><th>Categoría</th><th>Ubicación</th><th>Custodio</th><th>Valor CUP</th><th>Valor USD</th><th>Estado</th><th></th></tr>
+          <tr><th>Código</th><th>Descripción</th><th>Marca</th><th>Modelo</th><th>Categoría</th><th>Ubicación</th><th>Responsable</th><th>Valor CUP</th><th>Valor USD</th><th>Estado</th><th></th></tr>
         </thead>
         <tbody>
           <tr v-for="a in activos" :key="a.id">
@@ -235,9 +236,9 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
             <td>{{ formatMoneda(a.valor_usd) }}</td>
             <td><span class="badge" :class="a.estado === 'ACTIVO' ? 'ok' : 'warn'">{{ a.estado }}</span></td>
             <td class="acciones">
-              <button class="btn sec sm" @click="verHistorial(a)" title="Historial de movimientos">🕐</button>
-              <button class="btn sec sm" @click="editar(a)" title="Editar">✎</button>
-              <button v-if="esAdmin" class="btn danger sm" @click="eliminar(a)" title="Eliminar">🗑</button>
+              <button class="btn sec sm" @click="verHistorial(a)" title="Historial de movimientos"><AppIcon name="clock" :size="14" /></button>
+              <button class="btn sec sm" @click="editar(a)" title="Editar"><AppIcon name="edit" :size="14" /></button>
+              <button v-if="esAdmin" class="btn danger sm" @click="eliminar(a)" title="Eliminar"><AppIcon name="trash" :size="14" /></button>
             </td>
           </tr>
         </tbody>
@@ -265,7 +266,7 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
             <div class="field"><label>Ubicación</label>
               <select v-model="formulario.ubicacion_id" class="select"><option value="">—</option><option v-for="u in catalogo.ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}</option></select>
             </div>
-            <div class="field"><label>Custodio</label>
+            <div class="field"><label>Responsable</label>
               <select v-model="formulario.custodio_id" class="select"><option value="">—</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
             </div>
             <div class="field"><label>Fecha de adquisición</label><input v-model="formulario.fecha_adquisicion" class="input" placeholder="dd-mm-año" /></div>
@@ -326,7 +327,7 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
         </div>
         <div class="modal-foot">
           <button class="btn sec" @click="qrAbierto = false">Cerrar</button>
-          <button class="btn" :disabled="!qrImagenes.length" @click="imprimir">🖨 Imprimir</button>
+          <button class="btn" :disabled="!qrImagenes.length" @click="imprimir"><AppIcon name="printer" :size="15" /> Imprimir</button>
         </div>
       </div>
     </div>

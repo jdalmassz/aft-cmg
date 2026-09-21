@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { api, getUser } from '../api'
+import AppIcon from '../components/AppIcon.vue'
 
 const usuarios = ref([])
 const loading = ref(true)
@@ -72,7 +73,7 @@ onMounted(cargar)
             <td>{{ new Date(u.created_at).toLocaleDateString('es-CU') }}</td>
             <td><span class="badge" :class="u.activo ? 'ok' : 'warn'">{{ u.activo ? 'Activo' : 'Inactivo' }}</span></td>
             <td>
-              <button class="btn sec sm" @click="resetPass(u)">🔑 Contraseña</button>
+              <button class="btn sec sm" @click="resetPass(u)"><AppIcon name="key" :size="14" /> Contraseña</button>
               <button class="btn sec sm" @click="toggleActivo(u)">{{ u.activo ? 'Desactivar' : 'Activar' }}</button>
             </td>
           </tr>

@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { login, setSession } from '../api'
+import AppIcon from '../components/AppIcon.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -29,7 +30,7 @@ async function submit(e) {
 <template>
   <div class="login-wrap">
     <form class="login card" @submit="submit">
-      <div class="logo">📦</div>
+      <div class="logo"><AppIcon name="box" :size="60" /></div>
       <h1>AFT Camagüey</h1>
       <p class="sub">Sistema de logística de activos fijos tangibles</p>
       <input v-model.trim="username" class="input" placeholder="Usuario" autocomplete="username" />
@@ -46,7 +47,7 @@ async function submit(e) {
 <style scoped>
 .login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #0f172a, #1e3a8a); }
 .login { width: 100%; max-width: 360px; padding: 34px 30px; display: flex; flex-direction: column; gap: 14px; }
-.logo { font-size: 42px; text-align: center; }
+.logo { text-align: center; color: var(--primary); display: flex; justify-content: center; }
 h1 { margin: 0; font-size: 22px; text-align: center; }
 .sub { margin: -8px 0 4px; text-align: center; color: var(--muted); font-size: 13px; }
 .err { color: var(--danger); font-weight: 600; font-size: 13px; margin: 0; }
