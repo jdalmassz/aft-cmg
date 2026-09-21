@@ -335,22 +335,17 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
       <div class="card table-wrap">
         <table class="tbl" :class="{ compact: filasCompactas }">
           <thead>
-            <tr><th>Código</th><th>Descripción</th><th>Ubicación</th><th>Responsable</th><th>Valor USD</th><th>Estado</th><th></th></tr>
+            <tr><th>Código</th><th>Descripción</th><th>Marca</th><th>Ubicación</th><th>Responsable</th><th>Estado</th></tr>
           </thead>
           <tbody>
             <template v-for="a in activos" :key="a.id">
               <tr :class="{ 'fila-act': activoSel?.id === a.id }" @click="abrirActivo(a)">
                 <td><b class="codigo">{{ a.codigo || '—' }}</b></td>
                 <td><b>{{ a.descripcion }}</b></td>
+                <td>{{ a.marca || '—' }}</td>
                 <td>{{ a.ubicacion || '—' }}</td>
                 <td>{{ a.custodio || '—' }}</td>
-                <td>{{ formatMoneda(a.valor_usd) }}</td>
                 <td><span class="badge" :class="a.estado === 'ACTIVO' ? 'ok' : 'warn'">{{ a.estado }}</span></td>
-                <td class="acciones">
-                  <button class="btn sec sm" @click.stop="verHistorial(a)" title="Historial de movimientos"><AppIcon name="clock" :size="14" /></button>
-                  <button class="btn sec sm" @click.stop="editar(a)" title="Editar"><AppIcon name="edit" :size="14" /></button>
-                  <button v-if="esAdmin" class="btn danger sm" @click.stop="eliminar(a)" title="Eliminar"><AppIcon name="trash" :size="14" /></button>
-                </td>
               </tr>
             </template>
           </tbody>
@@ -542,7 +537,6 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
 .head h2 { margin: 0; } .muted { color: var(--muted); margin: 4px 0 0; }
 .hint { font-style: italic; opacity: 0.85; }
 .head .btns { display: flex; gap: 8px; align-items: center; }
-.acciones { display: flex; gap: 6px; }
 .codigo { color: var(--primary); font-variant-numeric: tabular-nums; }
 .filtros { display: flex; gap: 10px; padding: 12px; margin-bottom: 10px; flex-wrap: wrap; }
 .filtros .input { flex: 1 1 220px; }
@@ -611,7 +605,6 @@ table.tbl.compact th, table.tbl.compact td { padding: 5px 9px; font-size: 12.5px
 .det > span { font-size: 10.5px; color: var(--muted); text-transform: uppercase; font-weight: 700; letter-spacing: 0.3px; }
 .det > b { font-size: 13px; font-weight: 600; word-break: break-word; }
 .det.wide { grid-column: 1 / -1; }
-.det .acciones { gap: 8px; }
 
 @media (max-width: 640px) {
   .hbt { display: none; }
