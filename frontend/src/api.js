@@ -40,7 +40,24 @@ const api = {
   get: (u) => request('GET', u),
   post: (u, b) => request('POST', u, b),
   put: (u, b) => request('PUT', u, b),
-  del: (u) => request('DELETE', u)
+  del: (u) => request('DELETE', u),
+  download: async (url, filename) => {
+    const headers = {}
+    if (TOKEN) headers.Authorization = `Bearer ${TOKEN}`
+    const res = await fetch(url, { headers })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      throw new Error(data.error || 'No se pudo descargar el archivo')
+    }
+    const blob = await res.blob()
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = filename || 'archivo.xlsx'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    setTimeout(() => URL.revokeObjectURL(link.href), 5000)
+  }
 }
 
 const login = (username, password) => api.post('/auth/login', { username, password })

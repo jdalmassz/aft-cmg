@@ -83,6 +83,25 @@ Filtros por query string (todos opcionales):
 
 Detalle de un activo.
 
+### `GET /api/activos/export`
+
+Exporta el inventario (con los mismos filtros de `GET /api/activos`) a un fichero
+Excel `.xlsx` (`Content-Disposition: attachment`). Devuelve el binario, no JSON.
+
+### `GET /api/activos/:id/movimientos`
+
+Historial de movimientos de un activo (más recientes primero):
+`movimientos: [{ id, tipo, ubicacion_origen, ubicacion_destino, custodio_origen,
+custodio_destino, estado_origen, estado_destino, comentario, usuario_id,
+created_at, activo_id }]`.
+
+`tipo` ∈ `CREADO | TRASLADO_UBICACION | CAMBIO_CUSTODIO | CAMBIAR_ESTADO`.
+
+### `GET /api/movimientos`
+
+Historial global de movimientos. Filtros: `activo_id`, `q` (por descripción o
+código del activo), `limit` (default 500).
+
 ### `POST /api/activos`
 
 Cuerpo (solo `descripcion` es obligatorio):
