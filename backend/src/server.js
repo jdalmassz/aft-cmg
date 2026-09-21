@@ -20,6 +20,7 @@ function cors() {
 
 async function bootstrap() {
   await db.connect();
+  await db.waitForDb();
   await db.initSchema();
   await users.ensureAdminUser();
 

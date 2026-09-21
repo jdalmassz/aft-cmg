@@ -58,4 +58,22 @@ async function initSchema() {
   }
 }
 
-module.exports = { connect, getPool, initSchema };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function waitForDb({ attempts = 12, delayMs = 5000 } = {}) {
+  let lastErr;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      const r = await getPool().query('SELECT version()');
+      console.log(`PostgreSQL conectado (intento ${i}): ${r.rows[0].version.slice(0, 30)}`);
+      return;
+    } catch (e) {
+      lastErr = e;
+      console.log(`Esperando PostgreSQL (intento ${i}/${attempts}): ${e.message}`);
+      await sleep(delayMs);
+    }
+  }
+  throw lastErr;
+}
+
+module.exports = { connect, getPool, initSchema, waitForDb };
