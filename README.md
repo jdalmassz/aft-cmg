@@ -4,6 +4,9 @@ Aplicación web para el control y la logística de los activos de la empresa
 (sucursal **Camagüey**). Datos iniciales importados de
 `Control de AFT cmg rev01.xlsx` (57 activos).
 
+**Producción**: https://aft.procovar.cloud — desplegada en Dokploy (Proyecto
+Procovar-camaguey) con PostgreSQL 16.
+
 ## Stack
 
 | Capa | Tecnología |

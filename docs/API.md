@@ -1,6 +1,7 @@
 # API — Sistema AFT Camagüey
 
-Base: `http://<servidor>:8080` (en Dokploy, la URL pública que se publique).
+- **Producción**: `https://aft.procovar.cloud`
+- **Local**: `http://localhost:8080`
 
 Formato de respuesta: JSON. Errores: `{ "error": "mensaje" }` con el código HTTP
 correspondiente.
