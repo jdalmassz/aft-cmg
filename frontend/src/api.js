@@ -1,0 +1,54 @@
+let TOKEN = localStorage.getItem('aft_token') || null
+let USER = JSON.parse(localStorage.getItem('aft_user') || 'null')
+
+function setSession(token, user) {
+  TOKEN = token
+  USER = user
+  if (token) localStorage.setItem('aft_token', token)
+  else localStorage.removeItem('aft_token')
+  if (user) localStorage.setItem('aft_user', JSON.stringify(user))
+  else localStorage.removeItem('aft_user')
+}
+
+function clearSession() {
+  setSession(null, null)
+}
+
+function getToken() {
+  return TOKEN
+}
+
+function getUser() {
+  return USER
+}
+
+async function request(method, url, body) {
+  const headers = { 'Content-Type': 'application/json' }
+  if (TOKEN) headers.Authorization = `Bearer ${TOKEN}`
+  const res = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined })
+  if (res.status === 401 && !url.includes('/auth/login')) {
+    clearSession()
+    window.location.href = '/login'
+    throw new Error('Sesión expirada')
+  }
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Error en la petición')
+  return data
+}
+
+const api = {
+  get: (u) => request('GET', u),
+  post: (u, b) => request('POST', u, b),
+  put: (u, b) => request('PUT', u, b),
+  del: (u) => request('DELETE', u)
+}
+
+const login = (username, password) => api.post('/auth/login', { username, password })
+const fetchMe = () => api.get('/api/me')
+
+function formatMoneda(n) {
+  if (n === null || n === undefined || n === '') return '—'
+  return Number(n).toLocaleString('es-CU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+export { api, login, fetchMe, setSession, clearSession, getUser, getToken, formatMoneda }
