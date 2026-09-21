@@ -373,14 +373,44 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
       <aside v-if="drawerAbierto" class="drawer">
         <div class="drawer-head">
           <div class="drawer-title">
-            <b class="codigo">{{ activoSel.codigo || 'ID ' + activoSel.id }}</b>
-            <span class="muted">{{ activoSel.descripcion }}</span>
+            <button v-if="histDrawer" class="back" title="Volver al detalle" @click="histDrawer = false"><AppIcon name="arrow-left" :size="16" /></button>
+            <div class="drawer-title-txt">
+              <template v-if="histDrawer">
+                <b>Historial</b>
+                <span class="muted">{{ activoSel.codigo || 'ID ' + activoSel.id }} — {{ activoSel.descripcion }}</span>
+              </template>
+              <template v-else-if="editDrawer">
+                <b>Editar activo</b>
+                <span class="muted">{{ activoSel.codigo || 'ID ' + activoSel.id }}</span>
+              </template>
+              <template v-else>
+                <b class="codigo">{{ activoSel.codigo || 'ID ' + activoSel.id }}</b>
+                <span class="muted">{{ activoSel.descripcion }}</span>
+              </template>
+            </div>
           </div>
           <button class="close" @click="cerrarDrawer">×</button>
         </div>
         <div class="drawer-body" :class="{ 'drawer-form': editDrawer }">
           <p v-if="errores" class="err">{{ errores }}</p>
-          <template v-if="editDrawer">
+          <div v-if="histDrawer">
+            <div v-if="cargandoMov" class="center"><span class="spinner"></span></div>
+            <p v-else-if="!movimientos.length" class="muted">Sin movimientos registrados.</p>
+            <div v-else class="timeline">
+              <div v-for="m in movimientos" :key="m.id" class="tl-item">
+                <div class="tl-dot"></div>
+                <div class="tl-body">
+                  <div class="tl-head">
+                    <span class="badge" :class="tipoBadge(m)">{{ m.tipo.replace(/_/g, ' ') }}</span>
+                    <span class="muted tl-fecha">{{ fmtFecha(m.created_at) }}</span>
+                  </div>
+                  <p class="tl-desc">{{ descMov(m) }}</p>
+                  <p v-if="m.comentario" class="muted">«{{ m.comentario }}»</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <template v-else-if="editDrawer">
             <div class="form-grid">
               <div class="field"><label>Código</label><input v-model="formulario.codigo" class="input" placeholder="En blanco = automático" /></div>
               <div class="field"><label>Estado</label>
