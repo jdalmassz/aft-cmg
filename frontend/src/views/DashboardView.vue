@@ -1,10 +1,13 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { api, formatMoneda } from '../api'
+import { ok, err } from '../toast'
+import AppIcon from '../components/AppIcon.vue'
 
 const data = ref(null)
 const loading = ref(true)
 const error = ref('')
+const exportando = ref(false)
 
 onMounted(async () => {
   try {
@@ -15,6 +18,14 @@ onMounted(async () => {
     loading.value = false
   }
 })
+
+async function exportarExcel() {
+  exportando.value = true
+  try {
+    await api.download('/api/activos/export', 'AFT-Camaguey-' + new Date().toISOString().slice(0, 10) + '.xlsx')
+    ok('Inventario exportado a Excel')
+  } catch (e) { err(e.message) } finally { exportando.value = false }
+}
 </script>
 
 <template>
@@ -26,11 +37,38 @@ onMounted(async () => {
     <p v-else-if="error" class="err">{{ error }}</p>
 
     <template v-else-if="data">
+      <div class="acciones">
+        <router-link to="/activos" class="btn sec sm"><AppIcon name="box" :size="15" /> Ver inventario</router-link>
+        <router-link to="/activos" class="btn sm"><AppIcon name="plus" :size="15" /> Nuevo activo</router-link>
+        <button class="btn sec sm" :disabled="exportando" @click="exportarExcel"><AppIcon name="file" :size="15" /> {{ exportando ? 'Exportando…' : 'Exportar Excel' }}</button>
+      </div>
+
       <div class="kpis">
-        <div class="card kpi"><span class="kpi-v">{{ data.total }}</span><span class="kpi-l">Activos registrados</span></div>
-        <div class="card kpi"><span class="kpi-v">${{ formatMoneda(data.valores.valor_usd) }}</span><span class="kpi-l">Valor total (USD)</span></div>
-        <div class="card kpi"><span class="kpi-v">{{ data.porEstado.find(e => e.estado === 'ACTIVO')?.cantidad || 0 }}</span><span class="kpi-l">En activo</span></div>
-        <div class="card kpi"><span class="kpi-v">{{ data.custodiosTop.length }}</span><span class="kpi-l">Responsables</span></div>
+        <div class="card kpi">
+          <div class="kpi-ico blue"><AppIcon name="box" :size="20" /></div>
+          <div><span class="kpi-v">{{ data.total }}</span><span class="kpi-l">Activos registrados</span></div>
+        </div>
+        <div class="card kpi">
+          <div class="kpi-ico green"><AppIcon name="dollar" :size="20" /></div>
+          <div><span class="kpi-v">${{ formatMoneda(data.valores.valor_usd) }}</span><span class="kpi-l">Valor total (USD)</span></div>
+        </div>
+        <div class="card kpi">
+          <div class="kpi-ico amber"><AppIcon name="dollar" :size="20" /></div>
+          <div><span class="kpi-v">${{ formatMoneda(data.valores.valor_cup) }}</span><span class="kpi-l">Valor total (CUP)</span></div>
+        </div>
+        <div class="card kpi">
+          <div class="kpi-ico purple"><AppIcon name="check-circle" :size="20" /></div>
+          <div><span class="kpi-v">{{ data.porEstado.find(e => e.estado === 'ACTIVO')?.cantidad || 0 }}</span><span class="kpi-l">En activo</span></div>
+        </div>
+      </div>
+
+      <div class="card estados">
+        <h3>Distribución por estado</h3>
+        <div class="estado-chips">
+          <span v-for="e in data.porEstado" :key="e.estado" class="chip" :class="e.estado === 'ACTIVO' ? 'chip-ok' : 'chip-warn'">
+            {{ e.estado }} · {{ e.cantidad }}
+          </span>
+        </div>
       </div>
 
       <div class="grid2">
@@ -82,10 +120,23 @@ h2 { margin: 0 0 4px; }
 .center { display: grid; place-items: center; padding: 60px; }
 .err { color: var(--danger); font-weight: 600; }
 
-.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin: 18px 0 20px; }
-.kpi { padding: 18px 20px; display: flex; flex-direction: column; gap: 6px; }
-.kpi-v { font-size: 24px; font-weight: 800; }
-.kpi-l { color: var(--muted); font-size: 12px; font-weight: 600; }
+.acciones { display: flex; gap: 8px; margin: 16px 0 0; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin: 14px 0 18px; }
+.kpi { padding: 16px 18px; display: flex; align-items: center; gap: 14px; }
+.kpi-ico { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; color: #fff; flex: none; }
+.kpi-ico.blue { background: var(--primary); }
+.kpi-ico.green { background: var(--success); }
+.kpi-ico.amber { background: #d97706; }
+.kpi-ico.purple { background: #7c3aed; }
+.kpi .kpi-v { display: block; font-size: 22px; font-weight: 800; line-height: 1.1; }
+.kpi .kpi-l { color: var(--muted); font-size: 12px; font-weight: 600; }
+
+.estados { padding: 16px 20px; margin-bottom: 18px; }
+.estados h3 { margin: 0 0 12px; font-size: 14px; }
+.estado-chips { display: flex; gap: 10px; flex-wrap: wrap; }
+.chip { display: inline-flex; align-items: center; padding: 6px 14px; border-radius: 999px; font-size: 13px; font-weight: 700; }
+.chip-ok { background: #dcfce7; color: #166534; }
+.chip-warn { background: #fef9c3; color: #854d0e; }
 
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; }
 @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
