@@ -7,6 +7,16 @@ Aplicación web para el control y la logística de los activos de la empresa
 **Producción**: https://aft.procovar.cloud — desplegada en Dokploy (Proyecto
 Procovar-camaguey) con PostgreSQL 16.
 
+## Funcionalidades
+
+- Login local con JWT (roles admin/usuario) y gestión de usuarios.
+- Inventario con buscador y filtros (categoría, ubicación, custodio, estado).
+- **Historial de movimientos** por activo (creación, traslados de ubicación,
+  cambios de custodio y estado).
+- **Exportación a Excel** (.xlsx) del inventario filtrado.
+- **Etiquetas QR** imprimibles para cada activo.
+- Dashboard con totales, valores, distribución por categoría/ubicación/estado.
+
 ## Stack
 
 | Capa | Tecnología |
