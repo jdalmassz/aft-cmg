@@ -7,7 +7,6 @@ import './style.css'
 const Login = () => import('./views/LoginView.vue')
 const Dashboard = () => import('./views/DashboardView.vue')
 const Activos = () => import('./views/ActivosView.vue')
-const Usuarios = () => import('./views/UsuariosView.vue')
 const Responsables = () => import('./views/ResponsablesView.vue')
 
 const router = createRouter({
@@ -17,7 +16,6 @@ const router = createRouter({
     { path: '/login', component: Login },
     { path: '/inicio', component: Dashboard, meta: { auth: true } },
     { path: '/activos', component: Activos, meta: { auth: true } },
-    { path: '/usuarios', component: Usuarios, meta: { auth: true, admin: true } },
     { path: '/responsables', component: Responsables, meta: { auth: true, admin: true } },
     { path: '/:pathMatch(.*)*', redirect: '/inicio' }
   ]
