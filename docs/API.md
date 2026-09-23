@@ -86,7 +86,14 @@ Detalle de un activo.
 ### `GET /api/activos/export`
 
 Exporta el inventario (con los mismos filtros de `GET /api/activos`) a un fichero
-Excel `.xlsx` (`Content-Disposition: attachment`). Devuelve el binario, no JSON.
+Excel `.xlsx` con el **mismo formato que el original** `Control de AFT cmg rev01.xlsx`:
+
+- Hoja **`Activos`**: columnas `Codigo, Descripcion, Marca, Modelo, Valor CUP,
+  Categoria, Sucursal, Fecha de Adquisicion, Ubicación, Custodio, Valor USD,
+  Comentarios` (mismos anchos y estilos; sin relleno en cabecera; gridlines off).
+- Hoja **`Categoria`**: `Categoria, Ejemplos` desde el catálogo.
+- Nombre de fichero: `Control de AFT cmg-YYYY-MM-DD.xlsx`.
+- Devuelve el binario, no JSON.
 
 ### `GET /api/activos/:id/movimientos`
 

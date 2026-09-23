@@ -89,3 +89,16 @@ WHERE NOT EXISTS (SELECT 1 FROM movimientos m WHERE m.activo_id = a.id);
 -- Backfill idempotente: código automático para activos sin código
 UPDATE activos SET codigo = 'AFT-' || LPAD(id::text, 4, '0')
 WHERE codigo IS NULL OR codigo = '';
+
+-- Backfill idempotente: ejemplos de categorías (del Excel original)
+UPDATE categorias SET ejemplos = CASE nombre
+  WHEN 'Muebles, Enseres y Equipos de Oficina' THEN 'buro, mesa, ventildor, split, refrigerador, nevera'
+  WHEN 'Máquinas y equipos energéticos' THEN 'inversor, bateria, paneles'
+  WHEN 'Aparatos y equipos técnicos especiales' THEN 'laptop, nano, switch, tablet'
+  ELSE ejemplos
+END
+WHERE nombre IN (
+  'Muebles, Enseres y Equipos de Oficina',
+  'Máquinas y equipos energéticos',
+  'Aparatos y equipos técnicos especiales'
+);
