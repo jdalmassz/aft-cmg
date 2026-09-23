@@ -131,6 +131,15 @@ Elimina (solo rol `admin`). Devuelve `{ "ok": true }`.
 - `PUT /api/admin/users/:id`
   Campos parciales: `nombre`, `rol`, `activo` (bool), `password`.
 
+## Admin (responsables / custodios) — solo rol `admin`
+
+- `GET /api/admin/custodios` → `[{ id, nombre, activos }]` (conteo de activos asignados)
+- `POST /api/admin/custodios` → `{ "nombre": "..." }` → `201` con `{ id, nombre, activos: 0 }`
+- `PUT /api/admin/custodios/:id` → `{ "nombre": "..." }` (renombrar)
+- `DELETE /api/admin/custodios/:id` → `{ "ok": true }`; `400` si tiene activos asignados
+
+Nombres duplicados → `400` "Ya existe un responsable con ese nombre".
+
 ## Health
 
 - `GET /health` → `{ "ok": true, "servicio": "aft-cmg-api" }` (no requiere token).

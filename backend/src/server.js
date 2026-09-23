@@ -8,6 +8,7 @@ const users = require('./users');
 const usersAdmin = require('./users-admin');
 const activos = require('./activos');
 const movimientos = require('./movimientos');
+const custodios = require('./custodios');
 
 function cors() {
   return (req, res, next) => {
@@ -57,6 +58,11 @@ async function bootstrap() {
   adm.get('/users', usersAdmin.listUsers);
   adm.post('/users', usersAdmin.createUser);
   adm.put('/users/:id', usersAdmin.updateUser);
+
+  adm.get('/custodios', custodios.listCustodios);
+  adm.post('/custodios', custodios.createCustodio);
+  adm.put('/custodios/:id', custodios.updateCustodio);
+  adm.delete('/custodios/:id', custodios.deleteCustodio);
 
   app.use('/api', api);
   app.use('/api/admin', adm);

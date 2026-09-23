@@ -8,6 +8,7 @@ const Login = () => import('./views/LoginView.vue')
 const Dashboard = () => import('./views/DashboardView.vue')
 const Activos = () => import('./views/ActivosView.vue')
 const Usuarios = () => import('./views/UsuariosView.vue')
+const Responsables = () => import('./views/ResponsablesView.vue')
 
 const router = createRouter({
   history: createWebHistory(),
@@ -17,19 +18,22 @@ const router = createRouter({
     { path: '/inicio', component: Dashboard, meta: { auth: true } },
     { path: '/activos', component: Activos, meta: { auth: true } },
     { path: '/usuarios', component: Usuarios, meta: { auth: true, admin: true } },
+    { path: '/responsables', component: Responsables, meta: { auth: true, admin: true } },
     { path: '/:pathMatch(.*)*', redirect: '/inicio' }
   ]
 })
 
 router.beforeEach(async (to) => {
   if (!to.meta.auth) return true
-  if (getUser()) return true
-  try {
-    await fetchMe()
-    return true
-  } catch {
-    return { path: '/login', query: { redirect: to.fullPath } }
+  if (!getUser()) {
+    try {
+      await fetchMe()
+    } catch {
+      return { path: '/login', query: { redirect: to.fullPath } }
+    }
   }
+  if (to.meta.admin && getUser()?.rol !== 'admin') return { path: '/inicio' }
+  return true
 })
 
 createApp(App).use(router).mount('#app')

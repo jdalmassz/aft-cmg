@@ -10,6 +10,8 @@ Procovar-camaguey) con PostgreSQL 16.
 ## Funcionalidades
 
 - Login local con JWT (roles admin/usuario) y gestión de usuarios.
+- **Gestión de responsables** (custodios): crear, renombrar y eliminar (si no
+  tiene activos asignados).
 - Inventario con buscador y filtros (categoría, ubicación, responsable, estado).
 - **Historial de movimientos** por activo (creación, traslados de ubicación,
   cambios de custodio y estado).
@@ -41,9 +43,10 @@ aft-cmg/
 │       ├── auth.js        # JWT + middleware
 │       ├── users.js       # login / me / admin inicial
 │       ├── users-admin.js # gestión de usuarios
+│       ├── custodios.js   # gestión de responsables (custodios)
 │       └── activos.js     # CRUD de activos + catálogo + dashboard
 ├── frontend/
-│   └── src/  # Vue: login, dashboard, inventario, usuarios
+│   └── src/  # Vue: login, dashboard, inventario, usuarios, responsables
 ├── Dockerfile            # Construye el frontend y sirve todo con Node
 └── docker-compose.yml    # app + postgres (para prueba local)
 ```
