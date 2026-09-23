@@ -15,7 +15,7 @@ const menuOpen = ref(false)
 const colapsado = ref(localStorage.getItem('aft_sidebar') === '1')
 
 const pageTitle = computed(() => {
-  const t = { '/inicio': 'Dashboard', '/activos': 'Inventario', '/usuarios': 'Usuarios', '/responsables': 'Responsables' }
+  const t = { '/inicio': 'Dashboard', '/activos': 'Inventario', '/responsables': 'Responsables' }
   return t[route.path] || 'AFT Camagüey'
 })
 
@@ -49,7 +49,6 @@ function logout() {
         <nav>
           <router-link to="/inicio" class="nav-link" active-class="act" title="Dashboard"><AppIcon name="chart" :size="17" /> <span class="nl-txt">Dashboard</span></router-link>
           <router-link to="/activos" class="nav-link" active-class="act" title="Inventario"><AppIcon name="box" :size="17" /> <span class="nl-txt">Inventario</span></router-link>
-          <router-link v-if="user?.rol === 'admin'" to="/usuarios" class="nav-link" active-class="act" title="Usuarios"><AppIcon name="users" :size="17" /> <span class="nl-txt">Usuarios</span></router-link>
           <router-link v-if="user?.rol === 'admin'" to="/responsables" class="nav-link" active-class="act" title="Responsables"><AppIcon name="user-check" :size="17" /> <span class="nl-txt">Responsables</span></router-link>
         </nav>
         <div class="side-foot">
