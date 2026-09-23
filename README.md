@@ -17,6 +17,9 @@ Procovar-camaguey) con PostgreSQL 16.
   cambios de custodio y estado).
 - **Exportación a Excel** (.xlsx) del inventario filtrado, con el **mismo formato
   que el original** `Control de AFT cmg rev01.xlsx` (hojas `Activos` + `Categoria`).
+- **Exportación a PDF** de la *Hoja para Realizar el Conteo Físico*, con el
+  **mismo formato** que el documento original (agrupado por área, columnas
+  Existe/Falta y firmas).
 - **Etiquetas QR** imprimibles para cada activo.
 - **Código automático** (`AFT-####`) para activos sin código.
 - Dashboard con totales, valores, distribución por categoría/ubicación/estado.

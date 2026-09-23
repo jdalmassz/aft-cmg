@@ -95,6 +95,23 @@ Excel `.xlsx` con el **mismo formato que el original** `Control de AFT cmg rev01
 - Nombre de fichero: `Control de AFT cmg-YYYY-MM-DD.xlsx`.
 - Devuelve el binario, no JSON.
 
+### `GET /api/activos/export/pdf`
+
+Exporta el inventario (mismos filtros que `GET /api/activos`) a un PDF **con el
+mismo formato que la hoja original** `20260923-0849.pdf` (*Hoja para Realizar
+el Conteo Físico*):
+
+- Cabecera: Organismo / Entidad / Reeup / Unidad, título centrado, Período,
+  Conteo, Estado, logo EXBER y «Generado por» (usuario autenticado).
+- Columnas: `No. Invent.`, `Descripción`, `Existe`, `Falta` (líneas en blanco
+  para marcar a mano).
+- Filas agrupadas por **Área** (`ubicacion_id - nombre`).
+- Pie con firmas: Responsable del Conteo Físico y Responsable del Área.
+- Parámetros de cabecera opcionales por query: `organismo`, `entidad`, `reeup`,
+  `unidad`, `conteo`, `periodo`, `estado`, `generadoPor`.
+- Nombre de fichero: `Conteo-fisico-YYYY-MM-DD.pdf`.
+- Devuelve el binario, no JSON.
+
 ### `GET /api/activos/:id/movimientos`
 
 Historial de movimientos de un activo (más recientes primero):
