@@ -22,15 +22,28 @@ CREATE TABLE IF NOT EXISTS sucursales (
   nombre TEXT UNIQUE NOT NULL
 );
 
+-- Un área (Área 1, Área 2…) agrupa varias ubicaciones. El nombre es opcional.
+CREATE TABLE IF NOT EXISTS areas (
+  id SERIAL PRIMARY KEY,
+  numero INTEGER UNIQUE NOT NULL,
+  nombre TEXT
+);
+
 CREATE TABLE IF NOT EXISTS ubicaciones (
   id SERIAL PRIMARY KEY,
   nombre TEXT UNIQUE NOT NULL
 );
 
+ALTER TABLE ubicaciones ADD COLUMN IF NOT EXISTS area_id INTEGER REFERENCES areas(id);
+CREATE INDEX IF NOT EXISTS idx_ubicaciones_area ON ubicaciones(area_id);
+
 CREATE TABLE IF NOT EXISTS custodios (
   id SERIAL PRIMARY KEY,
   nombre TEXT UNIQUE NOT NULL
 );
+
+-- Un responsable puede ser además un usuario del sistema
+ALTER TABLE custodios ADD COLUMN IF NOT EXISTS user_id TEXT UNIQUE REFERENCES users(id) ON DELETE SET NULL;
 
 CREATE TABLE IF NOT EXISTS marcas (
   id SERIAL PRIMARY KEY,

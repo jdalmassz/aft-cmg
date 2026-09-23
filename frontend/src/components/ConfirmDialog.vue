@@ -1,5 +1,6 @@
 <script setup>
 import { confirmBox, cancelarConfirm } from '../confirm'
+import Drawer from './Drawer.vue'
 
 function ejecutar() {
   const cb = confirmBox.onOk
@@ -9,19 +10,15 @@ function ejecutar() {
 </script>
 
 <template>
-  <div v-if="confirmBox.open" class="modal-overlay" @click.self="cancelarConfirm">
-    <div class="modal confirm">
-      <div class="modal-head">{{ confirmBox.titulo }} <button class="close" @click="cancelarConfirm">×</button></div>
-      <div class="modal-body"><p class="msg">{{ confirmBox.mensaje }}</p></div>
-      <div class="modal-foot">
-        <button class="btn sec" @click="cancelarConfirm">Cancelar</button>
-        <button class="btn" :class="{ danger: confirmBox.peligro }" @click="ejecutar">Confirmar</button>
-      </div>
-    </div>
-  </div>
+  <Drawer :open="confirmBox.open" :titulo="confirmBox.titulo" :ancho="400" @close="cancelarConfirm">
+    <p class="msg">{{ confirmBox.mensaje }}</p>
+    <template #pie>
+      <button class="btn sec" @click="cancelarConfirm">Cancelar</button>
+      <button class="btn" :class="{ danger: confirmBox.peligro }" @click="ejecutar">Confirmar</button>
+    </template>
+  </Drawer>
 </template>
 
 <style scoped>
-.confirm { max-width: 420px; }
 .msg { margin: 4px 0; line-height: 1.5; }
 </style>

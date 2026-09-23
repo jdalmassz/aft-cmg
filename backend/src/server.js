@@ -9,6 +9,7 @@ const usersAdmin = require('./users-admin');
 const activos = require('./activos');
 const movimientos = require('./movimientos');
 const custodios = require('./custodios');
+const areas = require('./areas');
 const { exportActivosPdf } = require('./export-pdf');
 
 function cors() {
@@ -65,6 +66,14 @@ async function bootstrap() {
   adm.post('/custodios', custodios.createCustodio);
   adm.put('/custodios/:id', custodios.updateCustodio);
   adm.delete('/custodios/:id', custodios.deleteCustodio);
+
+  adm.get('/areas', areas.listAreas);
+  adm.post('/areas', areas.createArea);
+  adm.put('/areas/:id', areas.updateArea);
+  adm.delete('/areas/:id', areas.deleteArea);
+  adm.post('/ubicaciones', areas.createUbicacion);
+  adm.put('/ubicaciones/:id', areas.updateUbicacion);
+  adm.delete('/ubicaciones/:id', areas.deleteUbicacion);
 
   app.use('/api', api);
   app.use('/api/admin', adm);

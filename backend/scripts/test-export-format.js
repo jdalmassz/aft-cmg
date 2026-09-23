@@ -100,6 +100,9 @@ async function main() {
   eq('gridlines Activos', gA.views[0]?.showGridLines, false);
   eq('zoom Activos', gA.views[0]?.zoomScale, 110);
 
+  const tablas = (ws) => Object.values(ws.tables || {}).map((t) => [t.table?.name ?? t.name, (t.table?.style ?? t.style)?.theme]);
+  eq('tabla Activos (cabecera morada y filtros)', tablas(gA), tablas(oA));
+
   let fail = 0;
   for (const c of checks) {
     if (!c.ok) {
