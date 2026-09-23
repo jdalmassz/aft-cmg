@@ -30,6 +30,7 @@ const formulario = ref({})
 const guardando = ref(false)
 
 const exportando = ref(false)
+const exportandoPdf = ref(false)
 const qrAbierto = ref(false)
 const qrImagenes = ref([])
 const qrTotal = ref(0)
@@ -234,6 +235,16 @@ async function exportarExcel() {
   } catch (e) { errores.value = e.message } finally { exportando.value = false }
 }
 
+async function exportarPdf() {
+  exportandoPdf.value = true
+  errores.value = ''
+  try {
+    const qs = filtrosQuery().toString()
+    await api.download('/api/activos/export/pdf' + (qs ? '?' + qs : ''), 'Conteo-fisico-' + new Date().toISOString().slice(0, 10) + '.pdf')
+    ok('Hoja de conteo físico exportada a PDF')
+  } catch (e) { errores.value = e.message } finally { exportandoPdf.value = false }
+}
+
 async function generarEtiquetas() {
   qrAbierto.value = true
   generandoQr.value = true
@@ -297,6 +308,7 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
       <span class="btns">
         <button class="btn sec sm" :class="{ on: filasCompactas }" @click="toggleCompacto" :title="filasCompactas ? 'Filas normales' : 'Filas compactas (ver más registros)'"><AppIcon name="rows" :size="15" /> <span class="hbt">Compacto</span></button>
         <button class="btn sec sm" :disabled="exportando" @click="exportarExcel" title="Exportar inventario a Excel"><AppIcon name="file" :size="15" /> {{ exportando ? 'Exportando…' : 'Excel' }}</button>
+        <button class="btn sec sm" :disabled="exportandoPdf || !total" @click="exportarPdf" title="Exportar hoja de conteo físico a PDF"><AppIcon name="file" :size="15" /> {{ exportandoPdf ? 'Exportando…' : 'PDF' }}</button>
         <button class="btn sec sm" :disabled="!total" @click="generarEtiquetas" title="Generar etiquetas QR de los activos filtrados"><AppIcon name="qr" :size="15" /> QR</button>
         <button class="btn sm" @click="abrirNuevo"><AppIcon name="plus" :size="15" /> Nuevo activo</button>
       </span>

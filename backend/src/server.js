@@ -9,6 +9,7 @@ const usersAdmin = require('./users-admin');
 const activos = require('./activos');
 const movimientos = require('./movimientos');
 const custodios = require('./custodios');
+const { exportActivosPdf } = require('./export-pdf');
 
 function cors() {
   return (req, res, next) => {
@@ -45,6 +46,7 @@ async function bootstrap() {
 
   api.get('/activos', activos.listActivos);
   api.get('/activos/export', activos.exportActivos);
+  api.get('/activos/export/pdf', exportActivosPdf);
   api.get('/activos/:id', activos.getActivo);
   api.get('/activos/:id/movimientos', movimientos.movimientosByActivo);
   api.post('/activos', activos.createActivo);
