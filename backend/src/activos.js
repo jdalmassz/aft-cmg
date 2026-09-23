@@ -49,55 +49,115 @@ async function listActivos(req, res, next) {
   } catch (e) { next(e); }
 }
 
+const ORIGINAL_FONT = { name: 'Aptos Narrow', size: 11, family: 2, scheme: 'minor' };
+const ORIGINAL_HEADER_FONT = { ...ORIGINAL_FONT, bold: true };
+const MONEY_FMT = '#,##0.00';
+const FECHA_FMT = '[$-1540A]dd-mmm-yy;@';
+
+// Mismo orden/estilo que "Control de AFT cmg rev01.xlsx" (hoja Activos)
+const EXPORT_COLS = [
+  { header: 'Codigo', key: 'codigo', width: undefined },
+  { header: 'Descripcion', key: 'descripcion', width: 65.6640625 },
+  { header: 'Marca', key: 'marca', width: 19.6640625 },
+  { header: 'Modelo', key: 'modelo', width: 20 },
+  { header: 'Valor CUP', key: 'valor_cup', width: 11.5546875, numFmt: MONEY_FMT, hidden: true },
+  { header: 'Categoria', key: 'categoria', width: 3.109375, hidden: true },
+  { header: 'Sucursal', key: 'sucursal', width: 13.109375 },
+  { header: 'Fecha de Adquisicion', key: 'fecha_adquisicion', width: 20.5546875, numFmt: FECHA_FMT },
+  { header: 'Ubicación', key: 'ubicacion', width: 16.88671875 },
+  { header: 'Custodio', key: 'custodio', width: 35.33203125 },
+  { header: 'Valor USD', key: 'valor_usd', width: 25.77734375, numFmt: MONEY_FMT },
+  { header: 'Comentarios', key: 'comentarios', width: 34.88671875 }
+];
+
+function styleHeaderRow(row) {
+  row.eachCell((cell) => {
+    cell.font = { ...ORIGINAL_HEADER_FONT };
+    cell.alignment = { horizontal: 'center' };
+  });
+}
+
+function writeActivosSheet(wb, activos) {
+  const ws = wb.addWorksheet('Activos', {
+    views: [{ showGridLines: false, zoomScale: 110, zoomScaleNormal: 110 }]
+  });
+
+  ws.columns = EXPORT_COLS.map((c) => ({
+    header: c.header,
+    key: c.key,
+    ...(c.width !== undefined ? { width: c.width } : {}),
+    ...(c.hidden ? { hidden: true } : {})
+  }));
+
+  styleHeaderRow(ws.getRow(1));
+
+  for (const a of activos) {
+    const row = ws.addRow({
+      codigo: a.codigo ?? null,
+      descripcion: a.descripcion ?? null,
+      marca: a.marca ?? null,
+      modelo: a.modelo ?? null,
+      valor_cup: a.valor_cup == null ? null : Number(a.valor_cup),
+      categoria: a.categoria ?? null,
+      sucursal: a.sucursal ?? null,
+      fecha_adquisicion: a.fecha_adquisicion ?? null,
+      ubicacion: a.ubicacion ?? null,
+      custodio: a.custodio ?? null,
+      valor_usd: a.valor_usd == null ? null : Number(a.valor_usd),
+      comentarios: a.comentarios ?? null
+    });
+    row.eachCell((cell, colNumber) => {
+      const def = EXPORT_COLS[colNumber - 1];
+      cell.font = { ...ORIGINAL_FONT };
+      if (def?.numFmt) cell.numFmt = def.numFmt;
+    });
+  }
+
+  return ws;
+}
+
+function writeCategoriaSheet(wb, categorias) {
+  const ws = wb.addWorksheet('Categoria', {
+    views: [{ showGridLines: false, zoomScale: 110, zoomScaleNormal: 110 }]
+  });
+  ws.columns = [
+    { header: 'Categoria', key: 'nombre', width: 36.5546875 },
+    { header: 'Ejemplos', key: 'ejemplos', width: 24.6640625 }
+  ];
+
+  const header = ws.getRow(1);
+  header.eachCell((cell) => {
+    cell.font = { name: 'Aptos Narrow', size: 14, family: 2, scheme: 'minor', bold: true, color: { theme: 8 } };
+  });
+
+  for (const c of categorias) {
+    const row = ws.addRow({ nombre: c.nombre, ejemplos: c.ejemplos || null });
+    row.eachCell((cell) => {
+      cell.font = { name: 'Aptos Narrow', size: 12, family: 2, scheme: 'minor' };
+    });
+  }
+  return ws;
+}
+
 async function exportActivos(req, res, next) {
   try {
     const { q, categoria, ubicacion, custodio, marca, estado } = req.query;
     const from = buildWhere({ q, categoria, ubicacion, custodio, marca, estado });
-    const rows = await db.getPool().query(
-      `SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} ${from.sql} ORDER BY a.id`,
-      from.params
-    );
+    const [rows, cats] = await Promise.all([
+      db.getPool().query(
+        `SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} ${from.sql} ORDER BY a.id`,
+        from.params
+      ),
+      db.getPool().query('SELECT nombre, ejemplos FROM categorias ORDER BY id')
+    ]);
 
     const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet('Inventario AFT');
-    ws.columns = [
-      { header: 'Código', key: 'codigo', width: 12 },
-      { header: 'Descripción', key: 'descripcion', width: 42 },
-      { header: 'Marca', key: 'marca', width: 16 },
-      { header: 'Modelo', key: 'modelo', width: 18 },
-      { header: 'Categoría', key: 'categoria', width: 18 },
-      { header: 'Ubicación', key: 'ubicacion', width: 18 },
-      { header: 'Custodio', key: 'custodio', width: 22 },
-      { header: 'Valor CUP', key: 'valor_cup', width: 12, style: { numFmt: '#,##0.00' } },
-      { header: 'Valor USD', key: 'valor_usd', width: 12, style: { numFmt: '#,##0.00' } },
-      { header: 'Estado', key: 'estado', width: 9 },
-      { header: 'Fecha Adquisición', key: 'fecha_adquisicion', width: 14 },
-      { header: 'Comentarios', key: 'comentarios', width: 32 }
-    ];
-    ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2458A6' } };
-    ws.getRow(1).alignment = { vertical: 'middle' };
-    ws.getRow(1).height = 20;
-
-    for (const a of rows.rows) {
-      ws.addRow({
-        codigo: a.codigo || '', descripcion: a.descripcion,
-        marca: a.marca || '', modelo: a.modelo || '',
-        categoria: a.categoria || '', ubicacion: a.ubicacion || '',
-        custodio: a.custodio || '',
-        valor_cup: a.valor_cup == null ? null : Number(a.valor_cup),
-        valor_usd: a.valor_usd == null ? null : Number(a.valor_usd),
-        estado: a.estado || '', fecha_adquisicion: a.fecha_adquisicion || '',
-        comentarios: a.comentarios || ''
-      });
-    }
-    if (rows.rows.length) {
-      ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: ws.columnCount } };
-    }
+    writeActivosSheet(wb, rows.rows);
+    writeCategoriaSheet(wb, cats.rows);
 
     const fecha = new Date().toISOString().slice(0, 10);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="AFT-Camaguey-${fecha}.xlsx"`);
+    res.setHeader('Content-Disposition', `attachment; filename="Control de AFT cmg-${fecha}.xlsx"`);
     await wb.xlsx.write(res);
     res.end();
   } catch (e) { next(e); }
@@ -244,4 +304,7 @@ async function dashboard(req, res, next) {
   } catch (e) { next(e); }
 }
 
-module.exports = { listActivos, getActivo, createActivo, updateActivo, deleteActivo, catalogo, dashboard, exportActivos };
+module.exports = {
+  listActivos, getActivo, createActivo, updateActivo, deleteActivo, catalogo, dashboard, exportActivos,
+  writeActivosSheet, writeCategoriaSheet
+};

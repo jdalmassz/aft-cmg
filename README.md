@@ -15,7 +15,8 @@ Procovar-camaguey) con PostgreSQL 16.
 - Inventario con buscador y filtros (categoría, ubicación, responsable, estado).
 - **Historial de movimientos** por activo (creación, traslados de ubicación,
   cambios de custodio y estado).
-- **Exportación a Excel** (.xlsx) del inventario filtrado.
+- **Exportación a Excel** (.xlsx) del inventario filtrado, con el **mismo formato
+  que el original** `Control de AFT cmg rev01.xlsx` (hojas `Activos` + `Categoria`).
 - **Etiquetas QR** imprimibles para cada activo.
 - **Código automático** (`AFT-####`) para activos sin código.
 - Dashboard con totales, valores, distribución por categoría/ubicación/estado.
