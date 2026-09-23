@@ -2,6 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { api } from '../api'
 import AppIcon from '../components/AppIcon.vue'
+import Drawer from '../components/Drawer.vue'
 import { ok, err } from '../toast'
 import { confirmar } from '../confirm'
 
@@ -13,6 +14,8 @@ const q = ref('')
 const mostrar = ref(false)
 const editando = ref(null)
 const nombre = ref('')
+const userId = ref('')
+const usuarios = ref([])
 const guardando = ref(false)
 
 const filtrados = computed(() => {
@@ -27,19 +30,21 @@ async function cargar() {
   loading.value = true
   error.value = ''
   try {
-    lista.value = await api.get('/api/admin/custodios')
+    ;[lista.value, usuarios.value] = await Promise.all([api.get('/api/admin/custodios'), api.get('/api/admin/users')])
   } catch (e) { error.value = e.message } finally { loading.value = false }
 }
 
 function abrirNuevo() {
   editando.value = null
   nombre.value = ''
+  userId.value = ''
   mostrar.value = true
 }
 
 function abrirEditar(c) {
   editando.value = c
   nombre.value = c.nombre
+  userId.value = c.user_id || ''
   mostrar.value = true
 }
 
@@ -50,10 +55,10 @@ async function guardar() {
   error.value = ''
   try {
     if (editando.value) {
-      await api.put(`/api/admin/custodios/${editando.value.id}`, { nombre: n })
+      await api.put(`/api/admin/custodios/${editando.value.id}`, { nombre: n, user_id: userId.value || null })
       ok('Responsable actualizado')
     } else {
-      await api.post('/api/admin/custodios', { nombre: n })
+      await api.post('/api/admin/custodios', { nombre: n, user_id: userId.value || null })
       ok('Responsable creado')
     }
     mostrar.value = false
@@ -101,10 +106,11 @@ onMounted(cargar)
 
     <div v-else class="card table-wrap">
       <table class="tbl">
-        <thead><tr><th>Nombre</th><th>Activos</th><th></th></tr></thead>
+        <thead><tr><th>Nombre</th><th>Usuario</th><th>Activos</th><th></th></tr></thead>
         <tbody>
           <tr v-for="c in filtrados" :key="c.id">
             <td><b>{{ c.nombre }}</b></td>
+            <td><span v-if="c.username" class="usr"><AppIcon name="user-check" :size="13" /> {{ c.username }}</span><span v-else class="muted">—</span></td>
             <td><span class="badge" :class="c.activos ? 'ok' : 'warn'">{{ c.activos }}</span></td>
             <td class="acciones">
               <button class="btn sec sm" @click="abrirEditar(c)"><AppIcon name="edit" :size="14" /> Editar</button>
@@ -112,28 +118,30 @@ onMounted(cargar)
             </td>
           </tr>
           <tr v-if="!filtrados.length">
-            <td colspan="3" class="vacio">No hay responsables{{ q ? ' que coincidan con la búsqueda' : '' }}.</td>
+            <td colspan="4" class="vacio">No hay responsables{{ q ? ' que coincidan con la búsqueda' : '' }}.</td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <div v-if="mostrar" class="modal-overlay" @click.self="mostrar = false">
-      <div class="modal">
-        <div class="modal-head">{{ editando ? 'Editar responsable' : 'Nuevo responsable' }} <button class="close" @click="mostrar = false">×</button></div>
-        <div class="modal-body">
-          <p v-if="error" class="err">{{ error }}</p>
-          <div class="field">
-            <label>Nombre *</label>
-            <input v-model="nombre" class="input" placeholder="Nombre completo del responsable" @keyup.enter="guardar" />
-          </div>
-        </div>
-        <div class="modal-foot">
-          <button class="btn sec" @click="mostrar = false">Cancelar</button>
-          <button class="btn" :disabled="guardando" @click="guardar">{{ guardando ? 'Guardando…' : 'Guardar' }}</button>
-        </div>
+    <Drawer :open="mostrar" :titulo="editando ? 'Editar responsable' : 'Nuevo responsable'" @close="mostrar = false">
+      <p v-if="error" class="err">{{ error }}</p>
+      <div class="field">
+        <label>Nombre *</label>
+        <input v-model="nombre" class="input" placeholder="Nombre completo del responsable" @keyup.enter="guardar" />
       </div>
-    </div>
+      <div class="field vinculo">
+        <label>Usuario del sistema</label>
+        <select v-model="userId" class="select">
+          <option value="">Sin vincular</option>
+          <option v-for="u in usuarios" :key="u.id" :value="u.id" :disabled="lista.some((c) => c.user_id === u.id && c.id !== editando?.id)">{{ u.username }}{{ u.nombre ? ' — ' + u.nombre : '' }}</option>
+        </select>
+      </div>
+      <template #pie>
+        <button class="btn sec" @click="mostrar = false">Cancelar</button>
+        <button class="btn" :disabled="guardando" @click="guardar">{{ guardando ? 'Guardando…' : 'Guardar' }}</button>
+      </template>
+    </Drawer>
   </div>
 </template>
 
@@ -148,4 +156,6 @@ onMounted(cargar)
 .acciones { text-align: right; white-space: nowrap; }
 .acciones .btn { margin-left: 6px; }
 .vacio { text-align: center; color: var(--muted); padding: 28px 12px; }
+.vinculo { margin-top: 12px; }
+.usr { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; color: var(--primary-dark); }
 </style>

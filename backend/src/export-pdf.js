@@ -2,25 +2,20 @@ const path = require('path');
 const fs = require('fs');
 const PDFDocument = require('pdfkit');
 const db = require('./db');
-const { ACTIVOS_COLUMNS, ACTIVOS_FROM, buildWhere } = require('./activos-query');
+const { ACTIVOS_COLUMNS, ACTIVOS_FROM, AREA_ETIQUETA, buildWhere } = require('./activos-query');
 
-const LOGO = path.join(__dirname, 'assets', 'exber-logo.png');
+const LOGO = path.join(__dirname, 'assets', 'procovar-logo.png');
 
-// Cabecera fija del original 20260923-0849.pdf (sobreescribible por query)
-const HEADER_DEFAULTS = {
-  organismo: 'MINAL',
-  entidad: 'EES Empresa de Bebidas y Refresco Camaguey',
-  reeup: '111.0.1666',
-  unidad: '26 - UEB Com, Aseg y Servicios Camaguey',
-  estado: 'Pendiente'
-};
+// El formato de la hoja sale de un modelo en papel de otra empresa; la cabecera y
+// los datos son los de Procovar.
+const ENTIDAD = 'PROCOVAR S.R.L.';
 
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
-// Layout letter 612x792 — mismas columnas que el original
-const M = { left: 40, right: 40, top: 36, bottom: 56 };
+// Carta 612x792
+const M = { left: 40, right: 40, top: 36, bottom: 40 };
 const COL = {
-  codigo: 52,
+  codigoFin: 104, // el No. Invent. va alineado a la derecha, como en el modelo
   desc: 118,
   existe: 430,
   falta: 500,
@@ -28,80 +23,77 @@ const COL = {
 };
 const ROW_H = 16;
 const AREA_H = 20;
+const UBIC_H = 17;
+const FOOTER_H = 90;
 
 function periodoActual() {
   const d = new Date();
   return `${MESES[d.getMonth()]} / ${d.getFullYear()}`;
 }
 
-function metaFrom(req) {
+function metaFrom(req, extra = {}) {
   const q = req.query || {};
   return {
-    organismo: q.organismo || HEADER_DEFAULTS.organismo,
-    entidad: q.entidad || HEADER_DEFAULTS.entidad,
-    reeup: q.reeup || HEADER_DEFAULTS.reeup,
-    unidad: q.unidad || HEADER_DEFAULTS.unidad,
+    entidad: ENTIDAD,
+    sucursal: extra.sucursal || 'Camagüey',
+    area: extra.area || '',
+    ubicacion: extra.ubicacion || '',
     conteo: q.conteo || '',
     periodo: q.periodo || periodoActual(),
-    estado: q.estado || HEADER_DEFAULTS.estado,
-    generadoPor: q.generadoPor || req.user?.nombre || req.user?.username || ''
+    generadoPor: q.generadoPor || req.user?.nombre || req.user?.username || '',
+    separar: q.separar === '1'
   };
 }
 
-function kvLine(doc, x, y, label, value, indent = 0) {
-  doc.font('Helvetica-Bold').fontSize(9).text(label, x + indent, y, { lineBreak: false });
+function kvLine(doc, x, y, label, value) {
+  doc.font('Helvetica-Bold').fontSize(9).text(label, x, y, { lineBreak: false });
   const lw = doc.widthOfString(label);
-  doc.font('Helvetica').text(' ' + (value || ''), x + indent + lw, y, { lineBreak: false });
+  doc.font('Helvetica').text(' ' + (value || ''), x + lw, y, { lineBreak: false });
 }
 
 function drawHeader(doc, meta) {
   const y0 = M.top;
   let y = y0;
 
-  kvLine(doc, M.left, y, 'Organismo:', meta.organismo);
-  y += 14;
-  kvLine(doc, M.left, y, 'Entidad:', meta.entidad, 8);
-  y += 14;
-  kvLine(doc, M.left, y, 'Reeup:', meta.reeup, 8);
-  y += 14;
-  kvLine(doc, M.left, y, 'Unidad:', meta.unidad, 8);
-  y += 16;
-  kvLine(doc, M.left, y, 'Conteo:', meta.conteo);
-  y += 14;
-  kvLine(doc, M.left, y, 'Estado:', meta.estado);
+  const lineas = [
+    ['Entidad:', meta.entidad],
+    ['Sucursal:', meta.sucursal],
+    meta.area && ['Área:', meta.area.replace(/^Área /, '')],
+    meta.ubicacion && ['Ubicación:', meta.ubicacion],
+    ['Conteo:', meta.conteo]
+  ].filter(Boolean);
+  for (const [k, v] of lineas) {
+    kvLine(doc, M.left, y, k, v);
+    y += 14;
+  }
 
-  // Título centrado
   doc.font('Helvetica-Bold').fontSize(12)
     .text('Hoja para Realizar el Conteo Físico', M.left, y0 + 30, {
       width: COL.ruleEnd - M.left, align: 'center'
     });
   doc.font('Helvetica-Bold').fontSize(11)
-    .text(`Período: ${meta.periodo}`, M.left, y0 + 72, {
+    .text(`Período: ${meta.periodo}`, M.left, y0 + 58, {
       width: COL.ruleEnd - M.left, align: 'center'
     });
 
-  // Logo arriba a la derecha
   if (fs.existsSync(LOGO)) {
     try {
-      doc.image(LOGO, COL.ruleEnd - 115, y0 - 8, { width: 115 });
+      doc.image(LOGO, COL.ruleEnd - 130, y0, { width: 130 });
     } catch (_) { /* logo opcional */ }
   }
 
-  // Generado por (derecha)
   doc.font('Helvetica-Bold').fontSize(9)
-    .text(`Generado por: ${meta.generadoPor}`, M.left, y0 + 92, {
+    .text(`Generado por: ${meta.generadoPor}`, M.left, y0 + 58, {
       width: COL.ruleEnd - M.left, align: 'right'
     });
 
-  // Cabecera de columnas
-  const yCols = y0 + 110;
+  const yCols = Math.max(y + 6, y0 + 84);
   doc.font('Helvetica-Bold').fontSize(9);
-  doc.text('No. Invent.', M.left + 8, yCols, { lineBreak: false });
+  doc.text('No. Invent.', M.left, yCols, { width: COL.codigoFin - M.left, align: 'right', lineBreak: false });
   doc.text('Descripción', COL.desc, yCols, { lineBreak: false });
-  doc.text('Existe', COL.existe + 8, yCols, { lineBreak: false });
-  doc.text('Falta', COL.falta + 12, yCols, { lineBreak: false });
+  doc.text('Existe', COL.existe, yCols, { width: 42, align: 'center', lineBreak: false });
+  doc.text('Falta', COL.falta, yCols, { width: 42, align: 'center', lineBreak: false });
 
-  // Regla
   const yRule = yCols + 14;
   doc.lineWidth(1.2).moveTo(M.left, yRule).lineTo(COL.ruleEnd, yRule).stroke();
 
@@ -109,94 +101,150 @@ function drawHeader(doc, meta) {
 }
 
 function ensureSpace(doc, y, need) {
-  if (y + need <= doc.page.height - M.bottom) return y;
+  if (y + need <= doc.page.height - M.bottom - 14) return y;
   doc.addPage();
   return drawHeader(doc, doc._meta);
 }
 
-function drawFooter(doc) {
-  const y = doc.page.height - M.bottom - 40;
-  if (y < 120) return;
+function drawFooter(doc, y) {
+  // Las firmas van al pie de la última página; si no caben, a una página nueva.
+  const top = doc.page.height - M.bottom - 14 - FOOTER_H;
+  if (y > top) {
+    doc.addPage();
+    drawHeader(doc, doc._meta);
+  }
   const half = (COL.ruleEnd - M.left) / 2;
+  const w = half - 10;
+  let yy = top + 30;
 
   doc.font('Helvetica').fontSize(9);
-  doc.text('Responsable del Conteo Físico', M.left, y, { width: half - 10, lineBreak: false });
-  doc.text('Responsable del Área', M.left + half, y, { width: half - 10, lineBreak: false });
-
-  const y2 = y + 22;
-  doc.text('Nombre(s) y Apellidos:', M.left, y2, { width: half - 10, lineBreak: false });
-  doc.text('Nombre(s) y Apellidos:', M.left + half, y2, { width: half - 10, lineBreak: false });
-
-  const y3 = y2 + 16;
-  doc.text('Firma: ______________________', M.left, y3, { width: half - 10, lineBreak: false });
-  doc.text('Firma: ______________________', M.left + half, y3, { width: half - 10, lineBreak: false });
+  doc.text('Responsable del Conteo Físico', M.left, yy, { width: w, lineBreak: false });
+  doc.text('Responsable del Área', M.left + half, yy, { width: w, lineBreak: false });
+  yy += 20;
+  doc.text('Nombre(s) y Apellidos: ______________________', M.left, yy, { width: w, lineBreak: false });
+  doc.text('Nombre(s) y Apellidos: ______________________', M.left + half, yy, { width: w, lineBreak: false });
+  yy += 20;
+  doc.text('Firma: ______________________', M.left, yy, { width: w, lineBreak: false });
+  doc.text('Firma: ______________________', M.left + half, yy, { width: w, lineBreak: false });
 }
 
-function agruparPorArea(activos) {
-  const mapa = new Map();
-  for (const a of activos) {
-    const key = a.ubicacion_id != null ? String(a.ubicacion_id) : 'sin';
-    if (!mapa.has(key)) {
-      mapa.set(key, {
-        id: a.ubicacion_id,
-        nombre: a.ubicacion || 'Sin ubicación',
-        items: []
+function numerarPaginas(doc) {
+  const { start, count } = doc.bufferedPageRange();
+  for (let i = start; i < start + count; i++) {
+    doc.switchToPage(i);
+    doc.font('Helvetica').fontSize(8).fillColor('#555')
+      .text(`Página ${i - start + 1} de ${count}`, M.left, doc.page.height - M.bottom, {
+        width: COL.ruleEnd - M.left, align: 'right', lineBreak: false
       });
-    }
-    mapa.get(key).items.push(a);
+    doc.fillColor('black');
   }
-  return [...mapa.values()];
 }
+
+// Área → ubicaciones → activos, en el orden en que llegan (ya ordenados por SQL).
+function agrupar(activos) {
+  const areas = new Map();
+  for (const a of activos) {
+    const ka = a.area_id != null ? String(a.area_id) : 'sin';
+    if (!areas.has(ka)) {
+      areas.set(ka, { etiqueta: a.area || 'Sin área asignada', ubicaciones: new Map() });
+    }
+    const ubics = areas.get(ka).ubicaciones;
+    const ku = a.ubicacion_id != null ? String(a.ubicacion_id) : 'sin';
+    if (!ubics.has(ku)) {
+      ubics.set(ku, { id: a.ubicacion_id, nombre: a.ubicacion || 'Sin ubicación', items: [] });
+    }
+    ubics.get(ku).items.push(a);
+  }
+  return [...areas.values()].map((ar) => ({ ...ar, ubicaciones: [...ar.ubicaciones.values()] }));
+}
+
+const etiqueta = (id, nombre) => (id != null ? `${id} - ${nombre}` : nombre);
 
 function writeConteoPdf(doc, activos, meta) {
   doc._meta = meta;
   let y = drawHeader(doc, meta);
-  const areas = agruparPorArea(activos);
 
-  for (const area of areas) {
-    y = ensureSpace(doc, y, AREA_H + ROW_H);
-    const titulo = area.id != null
-      ? `Área: ${area.id} - ${area.nombre}`
-      : `Área: ${area.nombre}`;
-    doc.font('Helvetica-Bold').fontSize(10).text(titulo, M.left, y, { lineBreak: false });
-    y += AREA_H;
+  if (!activos.length) {
+    doc.font('Helvetica-Oblique').fontSize(10)
+      .text('No hay activos que coincidan con la selección.', M.left, y + 10, { lineBreak: false });
+    y += 30;
+  }
 
-    for (const a of area.items) {
-      y = ensureSpace(doc, y, ROW_H);
-      doc.font('Helvetica').fontSize(9);
-      doc.text(a.codigo || '', COL.codigo, y, {
-        lineBreak: false,
-        width: Math.max(40, COL.desc - COL.codigo - 6)
-      });
-      doc.text(a.descripcion || '', COL.desc, y, {
-        lineBreak: false,
-        width: Math.max(60, COL.existe - COL.desc - 16)
-      });
-      doc.lineWidth(0.6)
-        .moveTo(COL.existe, y + 10).lineTo(COL.existe + 42, y + 10).stroke()
-        .moveTo(COL.falta, y + 10).lineTo(COL.falta + 42, y + 10).stroke();
-      y += ROW_H;
+  let primeraUbic = true;
+  for (const area of agrupar(activos)) {
+    let primeraDelArea = true;
+    for (const ubic of area.ubicaciones) {
+      // Separado: cada ubicación en su página, con sus propias firmas
+      if (doc._meta.separar && !primeraUbic) {
+        drawFooter(doc, y);
+        doc.addPage();
+        y = drawHeader(doc, doc._meta);
+        primeraDelArea = true;
+      }
+      primeraUbic = false;
+      if (primeraDelArea) {
+        y = ensureSpace(doc, y, AREA_H + UBIC_H + ROW_H);
+        doc.font('Helvetica-Bold').fontSize(10).text(area.etiqueta, M.left, y, { lineBreak: false });
+        y += AREA_H;
+        primeraDelArea = false;
+      }
+      y = ensureSpace(doc, y, UBIC_H + ROW_H);
+      doc.font('Helvetica-Bold').fontSize(9)
+        .text(`Ubicación: ${etiqueta(ubic.id, ubic.nombre)}`, M.left + 12, y, { lineBreak: false });
+      y += UBIC_H;
+
+      for (const a of ubic.items) {
+        y = ensureSpace(doc, y, ROW_H);
+        doc.font('Helvetica').fontSize(9);
+        doc.text(a.codigo || '', M.left, y, {
+          width: COL.codigoFin - M.left, align: 'right', lineBreak: false
+        });
+        doc.text(a.descripcion || '', COL.desc, y, {
+          lineBreak: false, ellipsis: true,
+          width: COL.existe - COL.desc - 16
+        });
+        doc.lineWidth(0.6)
+          .moveTo(COL.existe, y + 10).lineTo(COL.existe + 42, y + 10).stroke()
+          .moveTo(COL.falta, y + 10).lineTo(COL.falta + 42, y + 10).stroke();
+        y += ROW_H;
+      }
+      y += 4;
     }
     y += 4;
   }
 
-  drawFooter(doc);
+  drawFooter(doc, y);
+  numerarPaginas(doc);
   return doc;
 }
 
 async function exportActivosPdf(req, res, next) {
   try {
-    const { q, categoria, ubicacion, custodio, marca, estado } = req.query;
-    const from = buildWhere({ q, categoria, ubicacion, custodio, marca, estado });
-    const rows = await db.getPool().query(
-      `SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} ${from.sql} ORDER BY a.ubicacion_id NULLS LAST, a.codigo NULLS LAST, a.id`,
+    const { q, categoria, area, ubicacion, custodio, marca } = req.query;
+    // Un conteo físico es de lo que hay: sin filtro de estado, sólo los activos.
+    const estado = req.query.estado || 'ACTIVO';
+    const pool = db.getPool();
+    const from = buildWhere({ q, categoria, area, ubicacion, custodio, marca, estado });
+    const rows = await pool.query(
+      `SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} ${from.sql}
+       ORDER BY ar.numero NULLS LAST, u.nombre NULLS LAST, a.codigo NULLS LAST, a.id`,
       from.params
     );
 
-    const meta = metaFrom(req);
+    const [ar, ub] = await Promise.all([
+      area ? pool.query(`SELECT ${AREA_ETIQUETA} AS etiqueta FROM areas ar WHERE ar.id = $1`, [area]) : null,
+      ubicacion ? pool.query('SELECT id, nombre FROM ubicaciones WHERE id = $1', [ubicacion]) : null
+    ]).then((rs) => rs.map((r) => r?.rows[0] || null));
+
+    const meta = metaFrom(req, {
+      sucursal: rows.rows[0]?.sucursal,
+      area: ar ? ar.etiqueta : '',
+      ubicacion: ub ? etiqueta(ub.id, ub.nombre) : ''
+    });
     const doc = new PDFDocument({
       size: 'LETTER',
       margin: 0,
+      bufferPages: true,
       info: { Title: 'Hoja para Realizar el Conteo Físico', Author: meta.generadoPor }
     });
     const fecha = new Date().toISOString().slice(0, 10);
@@ -208,4 +256,4 @@ async function exportActivosPdf(req, res, next) {
   } catch (e) { next(e); }
 }
 
-module.exports = { exportActivosPdf, writeConteoPdf, metaFrom, HEADER_DEFAULTS };
+module.exports = { exportActivosPdf, writeConteoPdf, metaFrom };

@@ -1,12 +1,12 @@
 const db = require('./db');
 const ExcelJS = require('exceljs');
 const { registerMovimiento } = require('./movimientos');
-const { ACTIVOS_COLUMNS, ACTIVOS_FROM, buildWhere } = require('./activos-query');
+const { ACTIVOS_COLUMNS, ACTIVOS_FROM, AREA_ETIQUETA, buildWhere } = require('./activos-query');
 
 async function listActivos(req, res, next) {
   try {
-    const { q, categoria, ubicacion, custodio, marca, estado, limite = 200, offset = 0 } = req.query;
-    const from = buildWhere({ q, categoria, ubicacion, custodio, marca, estado });
+    const { q, categoria, area, ubicacion, custodio, marca, estado, limite = 200, offset = 0 } = req.query;
+    const from = buildWhere({ q, categoria, area, ubicacion, custodio, marca, estado });
     const total = await db.getPool().query(`SELECT COUNT(*)::int AS n ${ACTIVOS_FROM} ${from.sql}`, from.params);
     const rows = await db.getPool().query(
       `SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} ${from.sql} ORDER BY a.id DESC LIMIT ${from.p(limite)} OFFSET ${from.p(offset)}`,
@@ -44,39 +44,54 @@ function styleHeaderRow(row) {
   });
 }
 
-function writeActivosSheet(wb, activos) {
-  const ws = wb.addWorksheet('Activos', {
+const valoresFila = (a) => [
+  a.codigo ?? null,
+  a.descripcion ?? null,
+  a.marca ?? null,
+  a.modelo ?? null,
+  a.valor_cup == null ? null : Number(a.valor_cup),
+  a.categoria ?? null,
+  a.sucursal ?? null,
+  a.fecha_adquisicion ?? null,
+  a.ubicacion ?? null,
+  a.custodio ?? null,
+  a.valor_usd == null ? null : Number(a.valor_usd),
+  a.comentarios ?? null
+];
+
+function writeActivosSheet(wb, activos, { hoja = 'Activos', tabla = 'Tabla1' } = {}) {
+  const ws = wb.addWorksheet(hoja, {
     views: [{ showGridLines: false, zoomScale: 110, zoomScaleNormal: 110 }]
   });
 
-  ws.columns = EXPORT_COLS.map((c) => ({
-    header: c.header,
-    key: c.key,
-    ...(c.width !== undefined ? { width: c.width } : {}),
-    ...(c.hidden ? { hidden: true } : {})
-  }));
+  EXPORT_COLS.forEach((c, i) => {
+    const col = ws.getColumn(i + 1);
+    if (c.width !== undefined) col.width = c.width;
+    if (c.hidden) col.hidden = true;
+  });
+
+  // El original es una tabla de Excel ("Tabla1", TableStyleLight13): de ahí salen
+  // la cabecera morada, las bandas y los botones de filtro. Sin filas no hay tabla.
+  if (activos.length) {
+    ws.addTable({
+      name: tabla,
+      ref: 'A1',
+      headerRow: true,
+      style: { theme: 'TableStyleLight13', showRowStripes: true },
+      columns: EXPORT_COLS.map((c) => ({ name: c.header, filterButton: true })),
+      rows: activos.map(valoresFila)
+    });
+  } else {
+    ws.getRow(1).values = EXPORT_COLS.map((c) => c.header);
+  }
 
   styleHeaderRow(ws.getRow(1));
-
-  for (const a of activos) {
-    const row = ws.addRow({
-      codigo: a.codigo ?? null,
-      descripcion: a.descripcion ?? null,
-      marca: a.marca ?? null,
-      modelo: a.modelo ?? null,
-      valor_cup: a.valor_cup == null ? null : Number(a.valor_cup),
-      categoria: a.categoria ?? null,
-      sucursal: a.sucursal ?? null,
-      fecha_adquisicion: a.fecha_adquisicion ?? null,
-      ubicacion: a.ubicacion ?? null,
-      custodio: a.custodio ?? null,
-      valor_usd: a.valor_usd == null ? null : Number(a.valor_usd),
-      comentarios: a.comentarios ?? null
-    });
-    row.eachCell((cell, colNumber) => {
-      const def = EXPORT_COLS[colNumber - 1];
+  for (let r = 2; r <= activos.length + 1; r++) {
+    const row = ws.getRow(r);
+    EXPORT_COLS.forEach((def, i) => {
+      const cell = row.getCell(i + 1);
       cell.font = { ...ORIGINAL_FONT };
-      if (def?.numFmt) cell.numFmt = def.numFmt;
+      if (def.numFmt) cell.numFmt = def.numFmt;
     });
   }
 
@@ -106,20 +121,47 @@ function writeCategoriaSheet(wb, categorias) {
   return ws;
 }
 
+// Excel: 31 caracteres como mucho, sin []:*?/\ y sin repetir
+function nombreHoja(nombre, wb) {
+  const base = nombre.replace(/[[\]:*?/\\]/g, ' ').trim().slice(0, 31) || 'Hoja';
+  let n = base;
+  for (let i = 2; wb.getWorksheet(n); i++) n = `${base.slice(0, 27)} (${i})`;
+  return n;
+}
+
 async function exportActivos(req, res, next) {
   try {
-    const { q, categoria, ubicacion, custodio, marca, estado } = req.query;
-    const from = buildWhere({ q, categoria, ubicacion, custodio, marca, estado });
+    const { q, categoria, area, ubicacion, custodio, marca, estado } = req.query;
+    const from = buildWhere({ q, categoria, area, ubicacion, custodio, marca, estado });
+    const separar = req.query.separar === '1';
     const [rows, cats] = await Promise.all([
       db.getPool().query(
-        `SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} ${from.sql} ORDER BY a.id`,
+        `SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} ${from.sql}
+         ORDER BY ${separar ? 'ar.numero NULLS LAST, u.nombre NULLS LAST, ' : ''}a.id`,
         from.params
       ),
       db.getPool().query('SELECT nombre, ejemplos FROM categorias ORDER BY id')
     ]);
 
     const wb = new ExcelJS.Workbook();
-    writeActivosSheet(wb, rows.rows);
+    if (separar) {
+      // Una hoja por ubicación, cada una con el formato del original
+      const porUbic = new Map();
+      for (const a of rows.rows) {
+        const k = a.ubicacion_id ?? 'sin';
+        if (!porUbic.has(k)) porUbic.set(k, { a, items: [] });
+        porUbic.get(k).items.push(a);
+      }
+      let n = 0;
+      for (const { a, items } of porUbic.values()) {
+        n++;
+        const nombre = `${a.area_numero != null ? 'A' + a.area_numero + ' ' : ''}${a.ubicacion || 'Sin ubicación'}`;
+        writeActivosSheet(wb, items, { hoja: nombreHoja(nombre, wb), tabla: `Tabla${n}` });
+      }
+      if (!n) writeActivosSheet(wb, []);
+    } else {
+      writeActivosSheet(wb, rows.rows);
+    }
     writeCategoriaSheet(wb, cats.rows);
 
     const fecha = new Date().toISOString().slice(0, 10);
@@ -221,16 +263,18 @@ async function deleteActivo(req, res, next) {
 
 async function catalogo(req, res, next) {
   try {
-    const [categorias, sucursales, ubicaciones, custodios, marcas] = await Promise.all([
+    const [categorias, sucursales, areas, ubicaciones, custodios, marcas] = await Promise.all([
       db.getPool().query('SELECT id, nombre, ejemplos FROM categorias ORDER BY nombre'),
       db.getPool().query('SELECT id, nombre FROM sucursales ORDER BY nombre'),
-      db.getPool().query('SELECT id, nombre FROM ubicaciones ORDER BY nombre'),
+      db.getPool().query(`SELECT ar.id, ar.numero, ar.nombre, ${AREA_ETIQUETA} AS etiqueta FROM areas ar ORDER BY ar.numero`),
+      db.getPool().query('SELECT id, nombre, area_id FROM ubicaciones ORDER BY nombre'),
       db.getPool().query('SELECT id, nombre FROM custodios ORDER BY nombre'),
       db.getPool().query('SELECT id, nombre FROM marcas ORDER BY nombre')
     ]);
     return res.json({
       categorias: categorias.rows,
       sucursales: sucursales.rows,
+      areas: areas.rows,
       ubicaciones: ubicaciones.rows,
       custodios: custodios.rows,
       marcas: marcas.rows

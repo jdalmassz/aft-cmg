@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { api, getUser } from '../api'
 import AppIcon from '../components/AppIcon.vue'
+import Drawer from '../components/Drawer.vue'
 
 const usuarios = ref([])
 const loading = ref(true)
@@ -81,26 +82,21 @@ onMounted(cargar)
       </table>
     </div>
 
-    <div v-if="mostrar" class="modal-overlay" @click.self="mostrar = false">
-      <div class="modal">
-        <div class="modal-head">Nuevo usuario <button class="close" @click="mostrar = false">×</button></div>
-        <div class="modal-body">
-          <p v-if="error" class="err">{{ error }}</p>
-          <div class="form-grid">
-            <div class="field"><label>Usuario *</label><input v-model="formulario.username" class="input" required /></div>
-            <div class="field"><label>Contraseña *</label><input v-model="formulario.password" type="password" class="input" required /></div>
-            <div class="field"><label>Nombre</label><input v-model="formulario.nombre" class="input" /></div>
-            <div class="field"><label>Rol</label>
-              <select v-model="formulario.rol" class="select"><option value="usuario">Usuario</option><option value="admin">Administrador</option></select>
-            </div>
-          </div>
-        </div>
-        <div class="modal-foot">
-          <button class="btn sec" @click="mostrar = false">Cancelar</button>
-          <button class="btn" :disabled="guardando" @click="guardar">{{ guardando ? 'Guardando…' : 'Guardar' }}</button>
+    <Drawer :open="mostrar" titulo="Nuevo usuario" @close="mostrar = false">
+      <p v-if="error" class="err">{{ error }}</p>
+      <div class="form-grid una">
+        <div class="field"><label>Usuario *</label><input v-model="formulario.username" class="input" required /></div>
+        <div class="field"><label>Contraseña *</label><input v-model="formulario.password" type="password" class="input" required /></div>
+        <div class="field"><label>Nombre</label><input v-model="formulario.nombre" class="input" /></div>
+        <div class="field"><label>Rol</label>
+          <select v-model="formulario.rol" class="select"><option value="usuario">Usuario</option><option value="admin">Administrador</option></select>
         </div>
       </div>
-    </div>
+      <template #pie>
+        <button class="btn sec" @click="mostrar = false">Cancelar</button>
+        <button class="btn" :disabled="guardando" @click="guardar">{{ guardando ? 'Guardando…' : 'Guardar' }}</button>
+      </template>
+    </Drawer>
   </div>
 </template>
 

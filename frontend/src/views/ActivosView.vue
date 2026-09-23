@@ -3,16 +3,18 @@ import { ref, onMounted, computed } from 'vue'
 import QRCode from 'qrcode'
 import { api, formatMoneda, getUser } from '../api'
 import AppIcon from '../components/AppIcon.vue'
+import Drawer from '../components/Drawer.vue'
 import { ok, err } from '../toast'
 import { confirmar } from '../confirm'
 
 const activos = ref([])
-const catalogo = ref({ categorias: [], ubicaciones: [], custodios: [], marcas: [] })
+const catalogo = ref({ categorias: [], areas: [], ubicaciones: [], custodios: [], marcas: [] })
 const loading = ref(true)
 const errores = ref('')
 
 const q = ref('')
 const fCategoria = ref('')
+const fArea = ref('')
 const fUbicacion = ref('')
 const fResponsable = ref('')
 const fEstado = ref('')
@@ -25,12 +27,12 @@ const porPagina = ref(50)
 const totalPaginas = computed(() => Math.max(1, Math.ceil(total.value / porPagina.value)))
 
 const mostrar = ref(false)
-const editando = ref(null)
 const formulario = ref({})
 const guardando = ref(false)
 
-const exportando = ref(false)
 const exportandoPdf = ref(false)
+const conteoAbierto = ref(false)
+const conteo = ref({ formato: 'pdf', area: '', ubicacion: '', separar: false, numero: '', periodo: '' })
 const qrAbierto = ref(false)
 const qrImagenes = ref([])
 const qrTotal = ref(0)
@@ -89,13 +91,26 @@ function eliminarDrawer() {
 
 const ESTADOS = ['ACTIVO', 'BAJA']
 
+const ubicacionesDe = (areaId) => (areaId
+  ? catalogo.value.ubicaciones.filter((u) => u.area_id === Number(areaId))
+  : catalogo.value.ubicaciones)
+const ubicacionesFiltro = computed(() => ubicacionesDe(fArea.value))
+const ubicacionesConteo = computed(() => ubicacionesDe(conteo.value.area))
+
+function cambiarArea() {
+  if (fUbicacion.value && !ubicacionesFiltro.value.some((u) => u.id === Number(fUbicacion.value))) fUbicacion.value = ''
+  aplicar()
+}
+
 const nome = (lista, id) => lista.find((x) => x.id === Number(id))?.nombre || ''
+const areaDe = (id) => catalogo.value.areas.find((x) => x.id === Number(id))?.etiqueta || ''
 
 const chips = computed(() => {
   const f = filtrosAplicados.value
   const out = []
   if (f.q) out.push({ k: 'q', texto: `«${f.q}»` })
   if (f.categoria) out.push({ k: 'categoria', texto: nome(catalogo.value.categorias, f.categoria) })
+  if (f.area) out.push({ k: 'area', texto: areaDe(f.area) })
   if (f.ubicacion) out.push({ k: 'ubicacion', texto: nome(catalogo.value.ubicaciones, f.ubicacion) })
   if (f.custodio) out.push({ k: 'custodio', texto: nome(catalogo.value.custodios, f.custodio) })
   if (f.estado) out.push({ k: 'estado', texto: f.estado })
@@ -114,6 +129,7 @@ function filtrosQuery() {
   const params = new URLSearchParams()
   if (filtrosAplicados.value.q) params.set('q', filtrosAplicados.value.q)
   if (filtrosAplicados.value.categoria) params.set('categoria', filtrosAplicados.value.categoria)
+  if (filtrosAplicados.value.area) params.set('area', filtrosAplicados.value.area)
   if (filtrosAplicados.value.ubicacion) params.set('ubicacion', filtrosAplicados.value.ubicacion)
   if (filtrosAplicados.value.custodio) params.set('custodio', filtrosAplicados.value.custodio)
   if (filtrosAplicados.value.estado) params.set('estado', filtrosAplicados.value.estado)
@@ -140,12 +156,12 @@ async function cargarCatalogo() {
 
 function aplicar() {
   pagina.value = 1
-  filtrosAplicados.value = { q: q.value.trim(), categoria: fCategoria.value, ubicacion: fUbicacion.value, custodio: fResponsable.value, estado: fEstado.value }
+  filtrosAplicados.value = { q: q.value.trim(), categoria: fCategoria.value, area: fArea.value, ubicacion: fUbicacion.value, custodio: fResponsable.value, estado: fEstado.value }
   cargar()
 }
 
 function limpiar() {
-  q.value = ''; fCategoria.value = ''; fUbicacion.value = ''; fResponsable.value = ''; fEstado.value = ''
+  q.value = ''; fCategoria.value = ''; fArea.value = ''; fUbicacion.value = ''; fResponsable.value = ''; fEstado.value = ''
   filtrosAplicados.value = {}
   if (pagina.value !== 1) pagina.value = 1
   cargar()
@@ -154,6 +170,7 @@ function limpiar() {
 function quitarChip(k) {
   if (k === 'q') q.value = ''
   if (k === 'categoria') fCategoria.value = ''
+  if (k === 'area') fArea.value = ''
   if (k === 'ubicacion') fUbicacion.value = ''
   if (k === 'custodio') fResponsable.value = ''
   if (k === 'estado') fEstado.value = ''
@@ -167,20 +184,7 @@ function irPagina(p) {
 }
 
 function abrirNuevo() {
-  editando.value = null
   formulario.value = emptyForm()
-  mostrar.value = true
-}
-
-function editar(a) {
-  editando.value = a
-  formulario.value = {
-    codigo: a.codigo || '', descripcion: a.descripcion, marca_id: a.marca_id || '',
-    modelo: a.modelo || '', valor_cup: a.valor_cup ?? '', valor_usd: a.valor_usd ?? '',
-    categoria_id: a.categoria_id || '', sucursal_id: a.sucursal_id || 1,
-    fecha_adquisicion: a.fecha_adquisicion || '', ubicacion_id: a.ubicacion_id || '',
-    custodio_id: a.custodio_id || '', estado: a.estado || 'ACTIVO', comentarios: a.comentarios || ''
-  }
   mostrar.value = true
 }
 
@@ -196,7 +200,7 @@ async function guardar() {
       body[k] = body[k] === '' ? null : Number(body[k])
     }
     if (!body.fecha_adquisicion) body.fecha_adquisicion = null
-    const aid = editando.value ? editando.value.id : activoSel.value?.id
+    const aid = mostrar.value ? null : activoSel.value?.id
     if (aid) {
       await api.put(`/api/activos/${aid}`, body)
       ok('Activo actualizado')
@@ -225,24 +229,33 @@ function eliminar(a) {
   })
 }
 
-async function exportarExcel() {
-  exportando.value = true
-  errores.value = ''
-  try {
-    const qs = filtrosQuery().toString()
-    await api.download('/api/activos/export' + (qs ? '?' + qs : ''), 'AFT-Camaguey-' + new Date().toISOString().slice(0, 10) + '.xlsx')
-    ok('Inventario exportado a Excel')
-  } catch (e) { errores.value = e.message } finally { exportando.value = false }
+function abrirConteo(formato) {
+  conteo.value = { ...conteo.value, formato, area: filtrosAplicados.value.area || '', ubicacion: filtrosAplicados.value.ubicacion || '' }
+  conteoAbierto.value = true
 }
 
-async function exportarPdf() {
+function cambiarAreaConteo() {
+  if (conteo.value.ubicacion && !ubicacionesConteo.value.some((u) => u.id === Number(conteo.value.ubicacion))) conteo.value.ubicacion = ''
+}
+
+async function exportar() {
   exportandoPdf.value = true
-  errores.value = ''
   try {
-    const qs = filtrosQuery().toString()
-    await api.download('/api/activos/export/pdf' + (qs ? '?' + qs : ''), 'Conteo-fisico-' + new Date().toISOString().slice(0, 10) + '.pdf')
-    ok('Hoja de conteo físico exportada a PDF')
-  } catch (e) { errores.value = e.message } finally { exportandoPdf.value = false }
+    const c = conteo.value
+    const pdf = c.formato === 'pdf'
+    const params = new URLSearchParams()
+    if (c.area) params.set('area', c.area)
+    if (c.ubicacion) params.set('ubicacion', c.ubicacion)
+    if (c.separar) params.set('separar', '1')
+    if (pdf && c.numero) params.set('conteo', c.numero)
+    if (pdf && c.periodo.trim()) params.set('periodo', c.periodo.trim())
+    const qs = params.toString()
+    const parte = c.ubicacion ? nome(catalogo.value.ubicaciones, c.ubicacion) : c.area ? areaDe(c.area) : ''
+    const nombre = (pdf ? 'Conteo-fisico' : 'AFT-Camaguey') + (parte ? '-' + parte.replace(/\s+/g, '_') : '') + '-' + new Date().toISOString().slice(0, 10) + (pdf ? '.pdf' : '.xlsx')
+    await api.download('/api/activos/export' + (pdf ? '/pdf' : '') + (qs ? '?' + qs : ''), nombre)
+    ok(pdf ? 'Hoja de conteo físico exportada a PDF' : 'Inventario exportado a Excel')
+    conteoAbierto.value = false
+  } catch (e) { err(e.message) } finally { exportandoPdf.value = false }
 }
 
 async function generarEtiquetas() {
@@ -307,8 +320,8 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
       </div>
       <span class="btns">
         <button class="btn sec sm" :class="{ on: filasCompactas }" @click="toggleCompacto" :title="filasCompactas ? 'Filas normales' : 'Filas compactas (ver más registros)'"><AppIcon name="rows" :size="15" /> <span class="hbt">Compacto</span></button>
-        <button class="btn sec sm" :disabled="exportando" @click="exportarExcel" title="Exportar inventario a Excel"><AppIcon name="file" :size="15" /> {{ exportando ? 'Exportando…' : 'Excel' }}</button>
-        <button class="btn sec sm" :disabled="exportandoPdf || !total" @click="exportarPdf" title="Exportar hoja de conteo físico a PDF"><AppIcon name="file" :size="15" /> {{ exportandoPdf ? 'Exportando…' : 'PDF' }}</button>
+        <button class="btn sec sm" @click="abrirConteo('excel')" title="Inventario en Excel, por área o ubicación"><AppIcon name="file" :size="15" /> Excel</button>
+        <button class="btn sec sm" :disabled="exportandoPdf || !total" @click="abrirConteo('pdf')" title="Hoja de conteo físico en PDF, por área o ubicación"><AppIcon name="file" :size="15" /> PDF</button>
         <button class="btn sec sm" :disabled="!total" @click="generarEtiquetas" title="Generar etiquetas QR de los activos filtrados"><AppIcon name="qr" :size="15" /> QR</button>
         <button class="btn sm" @click="abrirNuevo"><AppIcon name="plus" :size="15" /> Nuevo activo</button>
       </span>
@@ -317,7 +330,8 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
     <div class="card filtros">
       <input v-model="q" class="input" placeholder="Buscar por descripción, modelo, código…" @keyup.enter="aplicar" />
       <select v-model="fCategoria" class="select" @change="aplicar"><option value="">Categoría</option><option v-for="c in catalogo.categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
-      <select v-model="fUbicacion" class="select" @change="aplicar"><option value="">Ubicación</option><option v-for="u in catalogo.ubicaciones" :key="u.id" :value="u.id">#{{ u.id }} · {{ u.nombre }}</option></select>
+      <select v-model="fArea" class="select" @change="cambiarArea"><option value="">Área</option><option v-for="a in catalogo.areas" :key="a.id" :value="a.id">{{ a.etiqueta }}</option></select>
+      <select v-model="fUbicacion" class="select" @change="aplicar"><option value="">Ubicación</option><option v-for="u in ubicacionesFiltro" :key="u.id" :value="u.id">#{{ u.id }} · {{ u.nombre }}</option></select>
       <select v-model="fResponsable" class="select" @change="aplicar"><option value="">Responsable</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
       <select v-model="fEstado" class="select" @change="aplicar"><option value="">Estado</option><option v-for="e in ESTADOS" :key="e" :value="e">{{ e }}</option></select>
       <span class="btns">
@@ -378,115 +392,45 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
       </div>
     </template>
 
-    <div v-if="drawerAbierto" class="drawer-backdrop" @click.stop="cerrarDrawer"></div>
-    <transition name="drawer">
-      <aside v-if="drawerAbierto" class="drawer">
-        <div class="drawer-head">
-          <div class="drawer-title">
-            <button v-if="histDrawer" class="back" title="Volver al detalle" @click="histDrawer = false"><AppIcon name="arrow-left" :size="16" /></button>
-            <div class="drawer-title-txt">
-              <template v-if="histDrawer">
-                <b>Historial</b>
-                <span class="muted">{{ activoSel.codigo || 'ID ' + activoSel.id }} — {{ activoSel.descripcion }}</span>
-              </template>
-              <template v-else-if="editDrawer">
-                <b>Editar activo</b>
-                <span class="muted">{{ activoSel.codigo || 'ID ' + activoSel.id }}</span>
-              </template>
-              <template v-else>
-                <b class="codigo">{{ activoSel.codigo || 'ID ' + activoSel.id }}</b>
-                <span class="muted">{{ activoSel.descripcion }}</span>
-              </template>
-            </div>
-          </div>
-          <button class="close" @click="cerrarDrawer">×</button>
-        </div>
-        <div class="drawer-body" :class="{ 'drawer-form': editDrawer }">
-          <p v-if="errores" class="err">{{ errores }}</p>
-          <div v-if="histDrawer">
-            <div v-if="cargandoMov" class="center"><span class="spinner"></span></div>
-            <p v-else-if="!movimientos.length" class="muted">Sin movimientos registrados.</p>
-            <div v-else class="timeline">
-              <div v-for="m in movimientos" :key="m.id" class="tl-item">
-                <div class="tl-dot"></div>
-                <div class="tl-body">
-                  <div class="tl-head">
-                    <span class="badge" :class="tipoBadge(m)">{{ m.tipo.replace(/_/g, ' ') }}</span>
-                    <span class="muted tl-fecha">{{ fmtFecha(m.created_at) }}</span>
-                  </div>
-                  <p class="tl-desc">{{ descMov(m) }}</p>
-                  <p v-if="m.comentario" class="muted">«{{ m.comentario }}»</p>
+    <Drawer :open="drawerAbierto" :ancho="420" @close="cerrarDrawer">
+      <template #antes-titulo>
+        <button v-if="histDrawer" class="back" title="Volver al detalle" @click="histDrawer = false"><AppIcon name="arrow-left" :size="16" /></button>
+      </template>
+      <template #titulo>
+        <template v-if="activoSel && histDrawer">
+          <b>Historial</b>
+          <span class="dw-sub">{{ activoSel.codigo || 'ID ' + activoSel.id }} — {{ activoSel.descripcion }}</span>
+        </template>
+        <template v-else-if="activoSel && editDrawer">
+          <b>Editar activo</b>
+          <span class="dw-sub">{{ activoSel.codigo || 'ID ' + activoSel.id }}</span>
+        </template>
+        <template v-else-if="activoSel">
+          <b class="codigo">{{ activoSel.codigo || 'ID ' + activoSel.id }}</b>
+          <span class="dw-sub">{{ activoSel.descripcion }}</span>
+        </template>
+      </template>
+      <template v-if="activoSel">
+        <p v-if="errores" class="err">{{ errores }}</p>
+        <div v-if="histDrawer">
+          <div v-if="cargandoMov" class="center"><span class="spinner"></span></div>
+          <p v-else-if="!movimientos.length" class="muted">Sin movimientos registrados.</p>
+          <div v-else class="timeline">
+            <div v-for="m in movimientos" :key="m.id" class="tl-item">
+              <div class="tl-dot"></div>
+              <div class="tl-body">
+                <div class="tl-head">
+                  <span class="badge" :class="tipoBadge(m)">{{ m.tipo.replace(/_/g, ' ') }}</span>
+                  <span class="muted tl-fecha">{{ fmtFecha(m.created_at) }}</span>
                 </div>
+                <p class="tl-desc">{{ descMov(m) }}</p>
+                <p v-if="m.comentario" class="muted">«{{ m.comentario }}»</p>
               </div>
             </div>
           </div>
-          <template v-else-if="editDrawer">
-            <div class="form-grid">
-              <div class="field"><label>Código</label><input v-model="formulario.codigo" class="input" placeholder="En blanco = automático" /></div>
-              <div class="field"><label>Estado</label>
-                <select v-model="formulario.estado" class="select"><option v-for="e in ESTADOS" :key="e" :value="e">{{ e }}</option></select>
-              </div>
-              <div class="field full"><label>Descripción *</label><input v-model="formulario.descripcion" class="input" required /></div>
-              <div class="field"><label>Marca</label>
-                <select v-model="formulario.marca_id" class="select"><option value="">—</option><option v-for="m in catalogo.marcas" :key="m.id" :value="m.id">{{ m.nombre }}</option></select>
-              </div>
-              <div class="field"><label>Modelo</label><input v-model="formulario.modelo" class="input" /></div>
-              <div class="field"><label>Categoría</label>
-                <select v-model="formulario.categoria_id" class="select"><option value="">—</option><option v-for="c in catalogo.categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
-              </div>
-              <div class="field"><label>Ubicación</label>
-                <select v-model="formulario.ubicacion_id" class="select"><option value="">—</option><option v-for="u in catalogo.ubicaciones" :key="u.id" :value="u.id">#{{ u.id }} · {{ u.nombre }}</option></select>
-              </div>
-              <div class="field"><label>Responsable</label>
-                <select v-model="formulario.custodio_id" class="select"><option value="">—</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
-              </div>
-              <div class="field"><label>Fecha de adquisición</label><input v-model="formulario.fecha_adquisicion" class="input" placeholder="dd-mm-año" /></div>
-              <div class="field"><label>Valor CUP</label><input v-model="formulario.valor_cup" type="number" step="0.01" class="input" /></div>
-              <div class="field"><label>Valor USD</label><input v-model="formulario.valor_usd" type="number" step="0.01" class="input" /></div>
-              <div class="field full"><label>Comentarios</label><textarea v-model="formulario.comentarios" class="textarea" rows="3"></textarea></div>
-            </div>
-          </template>
-          <template v-else>
-            <div class="det-grid">
-              <div class="det"><span>Estado</span><span class="badge" :class="activoSel.estado === 'ACTIVO' ? 'ok' : 'warn'">{{ activoSel.estado }}</span></div>
-              <div class="det"><span>Categoría</span><b>{{ activoSel.categoria || '—' }}</b></div>
-              <div class="det"><span>Sucursal</span><b>{{ activoSel.sucursal || '—' }}</b></div>
-              <div class="det"><span>Marca</span><b>{{ activoSel.marca || '—' }}</b></div>
-              <div class="det"><span>Modelo</span><b>{{ activoSel.modelo || '—' }}</b></div>
-              <div class="det"><span>Ubicación</span><b><span v-if="activoSel.ubicacion_id" class="ubicacion-id">#{{ activoSel.ubicacion_id }}</span> {{ activoSel.ubicacion || '—' }}</b></div>
-              <div class="det"><span>Responsable</span><b>{{ activoSel.custodio || '—' }}</b></div>
-              <div class="det"><span>Valor CUP</span><b>{{ formatMoneda(activoSel.valor_cup) }}</b></div>
-              <div class="det"><span>Valor USD</span><b>{{ formatMoneda(activoSel.valor_usd) }}</b></div>
-              <div class="det"><span>Fecha de adquisición</span><b>{{ activoSel.fecha_adquisicion || '—' }}</b></div>
-              <div class="det"><span>Creado</span><b>{{ fmtFecha(activoSel.created_at) }}</b></div>
-              <div class="det wide"><span>Comentarios</span><b>{{ activoSel.comentarios || '—' }}</b></div>
-            </div>
-          </template>
         </div>
-        <div class="drawer-foot">
-          <template v-if="histDrawer">
-            <button class="btn sec" @click="histDrawer = false"><AppIcon name="arrow-left" :size="15" /> Volver al detalle</button>
-            <button class="btn sec" @click="cerrarDrawer">Cerrar</button>
-          </template>
-          <template v-else-if="editDrawer">
-            <button class="btn sec" @click="editDrawer = false">Cancelar</button>
-            <button class="btn" :disabled="guardando" @click="guardar">{{ guardando ? 'Guardando…' : 'Guardar cambios' }}</button>
-          </template>
-          <template v-else>
-            <button class="btn sec" @click="verHistorial(activoSel)"><AppIcon name="clock" :size="15" /> Historial</button>
-            <button class="btn sec" @click="editarDrawer"><AppIcon name="edit" :size="15" /> Editar</button>
-            <button v-if="esAdmin" class="btn danger" @click="eliminarDrawer"><AppIcon name="trash" :size="15" /> Eliminar</button>
-          </template>
-        </div>
-      </aside>
-    </transition>
-
-    <div v-if="mostrar" class="modal-overlay" @click.self="mostrar = false">
-      <div class="modal">
-        <div class="modal-head">{{ editando ? 'Editar activo' : 'Nuevo activo' }} <button class="close" @click="mostrar = false">×</button></div>
-        <div class="modal-body">
-          <p v-if="errores" class="err">{{ errores }}</p>
-          <div class="form-grid">
+        <template v-else-if="editDrawer">
+          <div class="form-grid una">
             <div class="field"><label>Código</label><input v-model="formulario.codigo" class="input" placeholder="En blanco = automático" /></div>
             <div class="field"><label>Estado</label>
               <select v-model="formulario.estado" class="select"><option v-for="e in ESTADOS" :key="e" :value="e">{{ e }}</option></select>
@@ -500,7 +444,7 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
               <select v-model="formulario.categoria_id" class="select"><option value="">—</option><option v-for="c in catalogo.categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
             </div>
             <div class="field"><label>Ubicación</label>
-              <select v-model="formulario.ubicacion_id" class="select"><option value="">—</option><option v-for="u in catalogo.ubicaciones" :key="u.id" :value="u.id">#{{ u.id }} · {{ u.nombre }}</option></select>
+              <select v-model="formulario.ubicacion_id" class="select"><option value="">—</option><option v-for="u in catalogo.ubicaciones" :key="u.id" :value="u.id">#{{ u.id }} · {{ u.nombre }}{{ u.area_id ? ' — ' + areaDe(u.area_id) : '' }}</option></select>
             </div>
             <div class="field"><label>Responsable</label>
               <select v-model="formulario.custodio_id" class="select"><option value="">—</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
@@ -508,40 +452,123 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
             <div class="field"><label>Fecha de adquisición</label><input v-model="formulario.fecha_adquisicion" class="input" placeholder="dd-mm-año" /></div>
             <div class="field"><label>Valor CUP</label><input v-model="formulario.valor_cup" type="number" step="0.01" class="input" /></div>
             <div class="field"><label>Valor USD</label><input v-model="formulario.valor_usd" type="number" step="0.01" class="input" /></div>
-            <div class="field full"><label>Comentarios</label><textarea v-model="formulario.comentarios" class="textarea" rows="2"></textarea></div>
+            <div class="field full"><label>Comentarios</label><textarea v-model="formulario.comentarios" class="textarea" rows="3"></textarea></div>
           </div>
-        </div>
-        <div class="modal-foot">
-          <button class="btn sec" @click="mostrar = false">Cancelar</button>
-          <button class="btn" :disabled="guardando" @click="guardar">{{ guardando ? 'Guardando…' : 'Guardar' }}</button>
-        </div>
-      </div>
-    </div>
+        </template>
+        <template v-else>
+          <div class="det-grid">
+            <div class="det"><span>Estado</span><span class="badge" :class="activoSel.estado === 'ACTIVO' ? 'ok' : 'warn'">{{ activoSel.estado }}</span></div>
+            <div class="det"><span>Categoría</span><b>{{ activoSel.categoria || '—' }}</b></div>
+            <div class="det"><span>Sucursal</span><b>{{ activoSel.sucursal || '—' }}</b></div>
+            <div class="det"><span>Marca</span><b>{{ activoSel.marca || '—' }}</b></div>
+            <div class="det"><span>Modelo</span><b>{{ activoSel.modelo || '—' }}</b></div>
+            <div class="det"><span>Área</span><b>{{ activoSel.area || '—' }}</b></div>
+            <div class="det"><span>Ubicación</span><b><span v-if="activoSel.ubicacion_id" class="ubicacion-id">#{{ activoSel.ubicacion_id }}</span> {{ activoSel.ubicacion || '—' }}</b></div>
+            <div class="det"><span>Responsable</span><b>{{ activoSel.custodio || '—' }}</b></div>
+            <div class="det"><span>Valor CUP</span><b>{{ formatMoneda(activoSel.valor_cup) }}</b></div>
+            <div class="det"><span>Valor USD</span><b>{{ formatMoneda(activoSel.valor_usd) }}</b></div>
+            <div class="det"><span>Fecha de adquisición</span><b>{{ activoSel.fecha_adquisicion || '—' }}</b></div>
+            <div class="det"><span>Creado</span><b>{{ fmtFecha(activoSel.created_at) }}</b></div>
+            <div class="det wide"><span>Comentarios</span><b>{{ activoSel.comentarios || '—' }}</b></div>
+          </div>
+        </template>
+      </template>
+      <template #pie>
+        <template v-if="histDrawer">
+          <button class="btn sec" @click="histDrawer = false"><AppIcon name="arrow-left" :size="15" /> Volver al detalle</button>
+          <button class="btn sec" @click="cerrarDrawer">Cerrar</button>
+        </template>
+        <template v-else-if="editDrawer">
+          <button class="btn sec" @click="editDrawer = false">Cancelar</button>
+          <button class="btn" :disabled="guardando" @click="guardar">{{ guardando ? 'Guardando…' : 'Guardar cambios' }}</button>
+        </template>
+        <template v-else>
+          <button class="btn sec" @click="verHistorial(activoSel)"><AppIcon name="clock" :size="15" /> Historial</button>
+          <button class="btn sec" @click="editarDrawer"><AppIcon name="edit" :size="15" /> Editar</button>
+          <button v-if="esAdmin" class="btn danger" @click="eliminarDrawer"><AppIcon name="trash" :size="15" /> Eliminar</button>
+        </template>
+      </template>
+    </Drawer>
 
-    <div v-if="qrAbierto" class="modal-overlay" @click.self="qrAbierto = false">
-      <div class="modal qr-modal">
-        <div class="modal-head">Etiquetas QR <button class="close" @click="qrAbierto = false">×</button></div>
-        <div class="modal-body">
-          <p v-if="errores" class="err">{{ errores }}</p>
-          <p class="muted">{{ qrImagenes.length }} etiqueta(s) de {{ qrTotal }} activo(s) que coinciden con el filtro.</p>
-          <div v-if="generandoQr && !qrImagenes.length" class="center"><span class="spinner"></span></div>
-          <div v-else class="qr-sheet">
-            <div v-for="a in qrImagenes" :key="a.id" class="qr-label">
-              <img :src="a.qr" alt="QR" />
-              <div class="qr-info">
-                <b>{{ a.codigo || ('ID ' + a.id) }}</b>
-                <span class="mutado">{{ a.descripcion }}</span>
-                <span class="mutado">{{ a.marca }}{{ a.modelo ? ' ' + a.modelo : '' }}</span>
-              </div>
-            </div>
+    <Drawer :open="mostrar" titulo="Nuevo activo" @close="mostrar = false">
+      <p v-if="errores" class="err">{{ errores }}</p>
+      <div class="form-grid una">
+        <div class="field"><label>Código</label><input v-model="formulario.codigo" class="input" placeholder="En blanco = automático" /></div>
+        <div class="field"><label>Estado</label>
+          <select v-model="formulario.estado" class="select"><option v-for="e in ESTADOS" :key="e" :value="e">{{ e }}</option></select>
+        </div>
+        <div class="field full"><label>Descripción *</label><input v-model="formulario.descripcion" class="input" required /></div>
+        <div class="field"><label>Marca</label>
+          <select v-model="formulario.marca_id" class="select"><option value="">—</option><option v-for="m in catalogo.marcas" :key="m.id" :value="m.id">{{ m.nombre }}</option></select>
+        </div>
+        <div class="field"><label>Modelo</label><input v-model="formulario.modelo" class="input" /></div>
+        <div class="field"><label>Categoría</label>
+          <select v-model="formulario.categoria_id" class="select"><option value="">—</option><option v-for="c in catalogo.categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
+        </div>
+        <div class="field"><label>Ubicación</label>
+          <select v-model="formulario.ubicacion_id" class="select"><option value="">—</option><option v-for="u in catalogo.ubicaciones" :key="u.id" :value="u.id">#{{ u.id }} · {{ u.nombre }}{{ u.area_id ? ' — ' + areaDe(u.area_id) : '' }}</option></select>
+        </div>
+        <div class="field"><label>Responsable</label>
+          <select v-model="formulario.custodio_id" class="select"><option value="">—</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
+        </div>
+        <div class="field"><label>Fecha de adquisición</label><input v-model="formulario.fecha_adquisicion" class="input" placeholder="dd-mm-año" /></div>
+        <div class="field"><label>Valor CUP</label><input v-model="formulario.valor_cup" type="number" step="0.01" class="input" /></div>
+        <div class="field"><label>Valor USD</label><input v-model="formulario.valor_usd" type="number" step="0.01" class="input" /></div>
+        <div class="field full"><label>Comentarios</label><textarea v-model="formulario.comentarios" class="textarea" rows="2"></textarea></div>
+      </div>
+      <template #pie>
+        <button class="btn sec" @click="mostrar = false">Cancelar</button>
+        <button class="btn" :disabled="guardando" @click="guardar">{{ guardando ? 'Guardando…' : 'Guardar' }}</button>
+      </template>
+    </Drawer>
+
+    <Drawer :open="conteoAbierto" :titulo="conteo.formato === 'pdf' ? 'Hoja de conteo físico' : 'Exportar a Excel'" subtitulo="Todo, por área o por ubicación" @close="conteoAbierto = false">
+      <div class="formato">
+        <button class="btn sec sm" :class="{ on: conteo.formato === 'pdf' }" @click="conteo.formato = 'pdf'">PDF · conteo físico</button>
+        <button class="btn sec sm" :class="{ on: conteo.formato === 'excel' }" @click="conteo.formato = 'excel'">Excel · inventario</button>
+      </div>
+      <div class="form-grid una">
+        <div class="field"><label>Área</label>
+          <select v-model="conteo.area" class="select" @change="cambiarAreaConteo"><option value="">Todas las áreas</option><option v-for="a in catalogo.areas" :key="a.id" :value="a.id">{{ a.etiqueta }}</option></select>
+        </div>
+        <div class="field"><label>Ubicación</label>
+          <select v-model="conteo.ubicacion" class="select"><option value="">{{ conteo.area ? 'Todas las del área' : 'Todas las ubicaciones' }}</option><option v-for="u in ubicacionesConteo" :key="u.id" :value="u.id">#{{ u.id }} · {{ u.nombre }}</option></select>
+        </div>
+        <label v-if="!conteo.ubicacion" class="check">
+          <input v-model="conteo.separar" type="checkbox" />
+          <span>Cada ubicación por separado <small class="muted">({{ conteo.formato === 'pdf' ? 'una página con sus firmas' : 'una hoja del libro' }} por ubicación)</small></span>
+        </label>
+        <template v-if="conteo.formato === 'pdf'">
+          <div class="field"><label>No. de conteo</label><input v-model="conteo.numero" class="input" inputmode="numeric" placeholder="Opcional" /></div>
+          <div class="field"><label>Período</label><input v-model="conteo.periodo" class="input" placeholder="En blanco = mes actual (p. ej. Septiembre / 2026)" /></div>
+        </template>
+      </div>
+      <p class="muted nota">{{ conteo.formato === 'pdf' ? 'Salen sólo los activos en estado ACTIVO, agrupados por área y ubicación.' : 'Mismo formato que «Control de AFT cmg rev01.xlsx».' }}</p>
+      <template #pie>
+        <button class="btn sec" @click="conteoAbierto = false">Cancelar</button>
+        <button class="btn" :disabled="exportandoPdf" @click="exportar"><AppIcon name="file" :size="15" /> {{ exportandoPdf ? 'Generando…' : (conteo.formato === 'pdf' ? 'Descargar PDF' : 'Descargar Excel') }}</button>
+      </template>
+    </Drawer>
+
+    <Drawer :open="qrAbierto" titulo="Etiquetas QR" :ancho="760" clase="qr-drawer" @close="qrAbierto = false">
+      <p v-if="errores" class="err">{{ errores }}</p>
+      <p class="muted">{{ qrImagenes.length }} etiqueta(s) de {{ qrTotal }} activo(s) que coinciden con el filtro.</p>
+      <div v-if="generandoQr && !qrImagenes.length" class="center"><span class="spinner"></span></div>
+      <div v-else class="qr-sheet">
+        <div v-for="a in qrImagenes" :key="a.id" class="qr-label">
+          <img :src="a.qr" alt="QR" />
+          <div class="qr-info">
+            <b>{{ a.codigo || ('ID ' + a.id) }}</b>
+            <span class="mutado">{{ a.descripcion }}</span>
+            <span class="mutado">{{ a.marca }}{{ a.modelo ? ' ' + a.modelo : '' }}</span>
           </div>
         </div>
-        <div class="modal-foot">
-          <button class="btn sec" @click="qrAbierto = false">Cerrar</button>
-          <button class="btn" :disabled="!qrImagenes.length" @click="imprimir"><AppIcon name="printer" :size="15" /> Imprimir</button>
-        </div>
       </div>
-    </div>
+      <template #pie>
+        <button class="btn sec" @click="qrAbierto = false">Cerrar</button>
+        <button class="btn" :disabled="!qrImagenes.length" @click="imprimir"><AppIcon name="printer" :size="15" /> Imprimir</button>
+      </template>
+    </Drawer>
   </div>
 </template>
 
@@ -590,29 +617,13 @@ table.tbl.compact th, table.tbl.compact td { padding: 5px 9px; font-size: 12.5px
 
 .btn.on { background: #e0ecff; border-color: var(--primary); color: var(--primary-dark); }
 
-.drawer-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,0.45); z-index: 850; }
-.drawer {
-  position: fixed; top: 0; right: 0; height: 100vh; width: 400px; max-width: 100vw;
-  background: #fff; z-index: 860; box-shadow: -12px 0 40px rgba(15,23,42,0.25);
-  display: flex; flex-direction: column;
-}
-.drawer-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 16px 18px; border-bottom: 1px solid var(--border); }
-.drawer-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.drawer-title-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.drawer-title .codigo { font-size: 15px; }
-.drawer-title .muted { font-size: 13px; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .back { background: none; border: none; cursor: pointer; color: var(--muted); padding: 4px; border-radius: 6px; display: flex; flex-shrink: 0; }
 .back:hover { color: var(--primary); background: #eef4ff; }
-.drawer-body { flex: 1; overflow-y: auto; padding: 16px 18px; }
-.drawer-body.drawer-form .form-grid { grid-template-columns: 1fr; }
-.drawer-body.drawer-form .field.full { grid-column: auto; }
-.drawer-foot { display: flex; gap: 8px; flex-wrap: wrap; padding: 14px 18px; border-top: 1px solid var(--border); }
-.drawer-foot .btn { flex: 1; justify-content: center; }
-
-@keyframes drawer-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
-.drawer-enter-active, .drawer-leave-active { transition: transform 0.22s ease, opacity 0.22s ease; }
-.drawer-enter-from, .drawer-leave-to { transform: translateX(100%); opacity: 0; }
-.drawer-enter-to, .drawer-leave-from { transform: translateX(0); opacity: 1; }
+.nota { font-size: 12px; margin-top: 14px; }
+.formato { display: flex; gap: 6px; margin-bottom: 14px; }
+.formato .btn { flex: 1; justify-content: center; }
+.check { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; cursor: pointer; }
+.check input { margin-top: 3px; }
 
 .det-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px 18px; }
 .det { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -622,6 +633,5 @@ table.tbl.compact th, table.tbl.compact td { padding: 5px 9px; font-size: 12.5px
 
 @media (max-width: 640px) {
   .hbt { display: none; }
-  .drawer { width: 100%; }
 }
 </style>
