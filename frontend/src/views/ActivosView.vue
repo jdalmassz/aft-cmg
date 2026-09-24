@@ -32,7 +32,7 @@ const guardando = ref(false)
 
 const exportandoPdf = ref(false)
 const conteoAbierto = ref(false)
-const conteo = ref({ formato: 'pdf', area: '', ubicacion: '', separar: false, numero: '', periodo: '' })
+const conteo = ref({ formato: 'pdf', area: '', ubicacion: '', responsable: '', separar: '', numero: '', periodo: '' })
 const qrAbierto = ref(false)
 const qrImagenes = ref([])
 const qrTotal = ref(0)
@@ -230,7 +230,8 @@ function eliminar(a) {
 }
 
 function abrirConteo(formato) {
-  conteo.value = { ...conteo.value, formato, area: filtrosAplicados.value.area || '', ubicacion: filtrosAplicados.value.ubicacion || '' }
+  const f = filtrosAplicados.value
+  conteo.value = { ...conteo.value, formato, area: f.area || '', ubicacion: f.ubicacion || '', responsable: f.custodio || '' }
   conteoAbierto.value = true
 }
 
@@ -246,11 +247,15 @@ async function exportar() {
     const params = new URLSearchParams()
     if (c.area) params.set('area', c.area)
     if (c.ubicacion) params.set('ubicacion', c.ubicacion)
-    if (c.separar) params.set('separar', '1')
+    if (c.responsable) params.set('custodio', c.responsable)
+    if (c.separar) params.set('separar', c.separar)
     if (pdf && c.numero) params.set('conteo', c.numero)
     if (pdf && c.periodo.trim()) params.set('periodo', c.periodo.trim())
     const qs = params.toString()
-    const parte = c.ubicacion ? nome(catalogo.value.ubicaciones, c.ubicacion) : c.area ? areaDe(c.area) : ''
+    const parte = [
+      c.ubicacion ? nome(catalogo.value.ubicaciones, c.ubicacion) : c.area ? areaDe(c.area) : '',
+      c.responsable ? nome(catalogo.value.custodios, c.responsable) : ''
+    ].filter(Boolean).join('-')
     const nombre = (pdf ? 'Conteo-fisico' : 'AFT-Camaguey') + (parte ? '-' + parte.replace(/\s+/g, '_') : '') + '-' + new Date().toISOString().slice(0, 10) + (pdf ? '.pdf' : '.xlsx')
     await api.download('/api/activos/export' + (pdf ? '/pdf' : '') + (qs ? '?' + qs : ''), nombre)
     ok(pdf ? 'Hoja de conteo físico exportada a PDF' : 'Inventario exportado a Excel')
@@ -522,7 +527,7 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
       </template>
     </Drawer>
 
-    <Drawer :open="conteoAbierto" :titulo="conteo.formato === 'pdf' ? 'Hoja de conteo físico' : 'Exportar a Excel'" subtitulo="Todo, por área o por ubicación" @close="conteoAbierto = false">
+    <Drawer :open="conteoAbierto" :titulo="conteo.formato === 'pdf' ? 'Hoja de conteo físico' : 'Exportar a Excel'" subtitulo="Todo, por área, ubicación o responsable" @close="conteoAbierto = false">
       <div class="formato">
         <button class="btn sec sm" :class="{ on: conteo.formato === 'pdf' }" @click="conteo.formato = 'pdf'">PDF · conteo físico</button>
         <button class="btn sec sm" :class="{ on: conteo.formato === 'excel' }" @click="conteo.formato = 'excel'">Excel · inventario</button>
@@ -534,10 +539,17 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
         <div class="field"><label>Ubicación</label>
           <select v-model="conteo.ubicacion" class="select"><option value="">{{ conteo.area ? 'Todas las del área' : 'Todas las ubicaciones' }}</option><option v-for="u in ubicacionesConteo" :key="u.id" :value="u.id">#{{ u.id }} · {{ u.nombre }}</option></select>
         </div>
-        <label v-if="!conteo.ubicacion" class="check">
-          <input v-model="conteo.separar" type="checkbox" />
-          <span>Cada ubicación por separado <small class="muted">({{ conteo.formato === 'pdf' ? 'una página con sus firmas' : 'una hoja del libro' }} por ubicación)</small></span>
-        </label>
+        <div class="field"><label>Responsable</label>
+          <select v-model="conteo.responsable" class="select"><option value="">Todos los responsables</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
+        </div>
+        <div class="field"><label>Separar</label>
+          <select v-model="conteo.separar" class="select">
+            <option value="">Todo junto</option>
+            <option value="ubicacion">Cada ubicación por separado</option>
+            <option value="responsable">Cada responsable por separado</option>
+          </select>
+          <small v-if="conteo.separar" class="muted">{{ conteo.formato === 'pdf' ? 'Sus propias páginas, con sus firmas,' : 'Una hoja del libro' }} por {{ conteo.separar === 'responsable' ? 'responsable' : 'ubicación' }}.</small>
+        </div>
         <template v-if="conteo.formato === 'pdf'">
           <div class="field"><label>No. de conteo</label><input v-model="conteo.numero" class="input" inputmode="numeric" placeholder="Opcional" /></div>
           <div class="field"><label>Período</label><input v-model="conteo.periodo" class="input" placeholder="En blanco = mes actual (p. ej. Septiembre / 2026)" /></div>
@@ -622,8 +634,6 @@ table.tbl.compact th, table.tbl.compact td { padding: 5px 9px; font-size: 12.5px
 .nota { font-size: 12px; margin-top: 14px; }
 .formato { display: flex; gap: 6px; margin-bottom: 14px; }
 .formato .btn { flex: 1; justify-content: center; }
-.check { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; cursor: pointer; }
-.check input { margin-top: 3px; }
 
 .det-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px 18px; }
 .det { display: flex; flex-direction: column; gap: 2px; min-width: 0; }

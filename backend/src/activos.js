@@ -133,11 +133,13 @@ async function exportActivos(req, res, next) {
   try {
     const { q, categoria, area, ubicacion, custodio, marca, estado } = req.query;
     const from = buildWhere({ q, categoria, area, ubicacion, custodio, marca, estado });
-    const separar = req.query.separar === '1';
+    // '1' / 'ubicacion': una hoja por ubicación · 'responsable': una hoja por responsable
+    const separar = req.query.separar === 'responsable' ? 'responsable'
+      : (req.query.separar === '1' || req.query.separar === 'ubicacion') ? 'ubicacion' : '';
     const [rows, cats] = await Promise.all([
       db.getPool().query(
         `SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} ${from.sql}
-         ORDER BY ${separar ? 'ar.numero NULLS LAST, u.nombre NULLS LAST, ' : ''}a.id`,
+         ORDER BY ${separar === 'responsable' ? 'cu.nombre NULLS LAST, ' : separar ? 'ar.numero NULLS LAST, u.nombre NULLS LAST, ' : ''}a.id`,
         from.params
       ),
       db.getPool().query('SELECT nombre, ejemplos FROM categorias ORDER BY id')
@@ -145,17 +147,19 @@ async function exportActivos(req, res, next) {
 
     const wb = new ExcelJS.Workbook();
     if (separar) {
-      // Una hoja por ubicación, cada una con el formato del original
-      const porUbic = new Map();
+      // Una hoja por ubicación o por responsable, cada una con el formato del original
+      const grupos = new Map();
       for (const a of rows.rows) {
-        const k = a.ubicacion_id ?? 'sin';
-        if (!porUbic.has(k)) porUbic.set(k, { a, items: [] });
-        porUbic.get(k).items.push(a);
+        const k = separar === 'responsable' ? (a.custodio_id ?? 'sin') : (a.ubicacion_id ?? 'sin');
+        if (!grupos.has(k)) grupos.set(k, { a, items: [] });
+        grupos.get(k).items.push(a);
       }
       let n = 0;
-      for (const { a, items } of porUbic.values()) {
+      for (const { a, items } of grupos.values()) {
         n++;
-        const nombre = `${a.area_numero != null ? 'A' + a.area_numero + ' ' : ''}${a.ubicacion || 'Sin ubicación'}`;
+        const nombre = separar === 'responsable'
+          ? (a.custodio || 'Sin responsable')
+          : `${a.area_numero != null ? 'A' + a.area_numero + ' ' : ''}${a.ubicacion || 'Sin ubicación'}`;
         writeActivosSheet(wb, items, { hoja: nombreHoja(nombre, wb), tabla: `Tabla${n}` });
       }
       if (!n) writeActivosSheet(wb, []);
