@@ -38,10 +38,12 @@ function metaFrom(req, extra = {}) {
     sucursal: extra.sucursal || 'Camagüey',
     area: extra.area || '',
     ubicacion: extra.ubicacion || '',
+    responsable: extra.responsable || '',
     conteo: q.conteo || '',
     periodo: q.periodo || periodoActual(),
     generadoPor: q.generadoPor || req.user?.nombre || req.user?.username || '',
-    separar: q.separar === '1'
+    // Cada ubicación o cada responsable en sus páginas, con sus propias firmas
+    separar: q.separar === 'responsable' ? 'responsable' : (q.separar === '1' || q.separar === 'ubicacion') ? 'ubicacion' : ''
   };
 }
 
@@ -55,14 +57,7 @@ function drawHeader(doc, meta) {
   const y0 = M.top;
   let y = y0;
 
-  const lineas = [
-    ['Entidad:', meta.entidad],
-    ['Sucursal:', meta.sucursal],
-    meta.area && ['Área:', meta.area.replace(/^Área /, '')],
-    meta.ubicacion && ['Ubicación:', meta.ubicacion],
-    ['Conteo:', meta.conteo]
-  ].filter(Boolean);
-  for (const [k, v] of lineas) {
+  for (const [k, v] of [['Entidad:', meta.entidad], ['Sucursal:', meta.sucursal], ['Conteo:', meta.conteo]]) {
     kvLine(doc, M.left, y, k, v);
     y += 14;
   }
@@ -87,7 +82,25 @@ function drawHeader(doc, meta) {
       width: COL.ruleEnd - M.left, align: 'right'
     });
 
-  const yCols = Math.max(y + 6, y0 + 84);
+  // Lo seleccionado va en su propia línea, a todo el ancho: un nombre largo no
+  // cabe en el bloque de la izquierda sin pisar el título.
+  let yCols = y0 + 84;
+  const seleccion = [
+    meta.area && ['Área:', meta.area.replace(/^Área /, '')],
+    meta.ubicacion && ['Ubicación:', meta.ubicacion],
+    meta.responsable && ['Responsable:', meta.responsable]
+  ].filter(Boolean);
+  if (seleccion.length) {
+    let x = M.left;
+    for (const [k, v] of seleccion) {
+      kvLine(doc, x, yCols - 6, k, v);
+      doc.font('Helvetica-Bold');
+      const w = doc.widthOfString(k);
+      doc.font('Helvetica');
+      x += w + doc.widthOfString(' ' + v) + 18;
+    }
+    yCols += 14;
+  }
   doc.font('Helvetica-Bold').fontSize(9);
   doc.text('No. Invent.', M.left, yCols, { width: COL.codigoFin - M.left, align: 'right', lineBreak: false });
   doc.text('Descripción', COL.desc, yCols, { lineBreak: false });
@@ -119,10 +132,11 @@ function drawFooter(doc, y) {
 
   doc.font('Helvetica').fontSize(9);
   doc.text('Responsable del Conteo Físico', M.left, yy, { width: w, lineBreak: false });
-  doc.text('Responsable del Área', M.left + half, yy, { width: w, lineBreak: false });
+  const resp = doc._meta.responsable;
+  doc.text(resp ? 'Responsable de los activos' : 'Responsable del Área', M.left + half, yy, { width: w, lineBreak: false });
   yy += 20;
   doc.text('Nombre(s) y Apellidos: ______________________', M.left, yy, { width: w, lineBreak: false });
-  doc.text('Nombre(s) y Apellidos: ______________________', M.left + half, yy, { width: w, lineBreak: false });
+  doc.text(`Nombre(s) y Apellidos: ${resp || '______________________'}`, M.left + half, yy, { width: w, lineBreak: false, ellipsis: true });
   yy += 20;
   doc.text('Firma: ______________________', M.left, yy, { width: w, lineBreak: false });
   doc.text('Firma: ______________________', M.left + half, yy, { width: w, lineBreak: false });
@@ -160,28 +174,19 @@ function agrupar(activos) {
 
 const etiqueta = (id, nombre) => (id != null ? `${id} - ${nombre}` : nombre);
 
-function writeConteoPdf(doc, activos, meta) {
-  doc._meta = meta;
-  let y = drawHeader(doc, meta);
-
-  if (!activos.length) {
-    doc.font('Helvetica-Oblique').fontSize(10)
-      .text('No hay activos que coincidan con la selección.', M.left, y + 10, { lineBreak: false });
-    y += 30;
-  }
-
-  let primeraUbic = true;
+// Escribe un bloque Área → Ubicación → activos. Con separar === 'ubicacion' cada
+// ubicación arranca página nueva (la anterior cierra con sus firmas).
+function escribirBloque(doc, activos, y, estado) {
   for (const area of agrupar(activos)) {
     let primeraDelArea = true;
     for (const ubic of area.ubicaciones) {
-      // Separado: cada ubicación en su página, con sus propias firmas
-      if (doc._meta.separar && !primeraUbic) {
+      if (doc._meta.separar === 'ubicacion' && !estado.primera) {
         drawFooter(doc, y);
         doc.addPage();
         y = drawHeader(doc, doc._meta);
         primeraDelArea = true;
       }
-      primeraUbic = false;
+      estado.primera = false;
       if (primeraDelArea) {
         y = ensureSpace(doc, y, AREA_H + UBIC_H + ROW_H);
         doc.font('Helvetica-Bold').fontSize(10).text(area.etiqueta, M.left, y, { lineBreak: false });
@@ -212,7 +217,39 @@ function writeConteoPdf(doc, activos, meta) {
     }
     y += 4;
   }
+  return y;
+}
 
+function writeConteoPdf(doc, activos, meta) {
+  doc._meta = meta;
+
+  if (meta.separar === 'responsable' && activos.length) {
+    // Un juego de páginas por responsable, con su nombre en la cabecera y en la firma
+    const porResp = new Map();
+    for (const a of activos) {
+      const k = a.custodio_id ?? 'sin';
+      if (!porResp.has(k)) porResp.set(k, { nombre: a.custodio || 'Sin responsable', items: [] });
+      porResp.get(k).items.push(a);
+    }
+    let primero = true;
+    for (const g of porResp.values()) {
+      if (!primero) doc.addPage();
+      primero = false;
+      doc._meta = { ...meta, responsable: g.nombre };
+      const y = escribirBloque(doc, g.items, drawHeader(doc, doc._meta), { primera: true });
+      drawFooter(doc, y);
+    }
+    numerarPaginas(doc);
+    return doc;
+  }
+
+  let y = drawHeader(doc, meta);
+  if (!activos.length) {
+    doc.font('Helvetica-Oblique').fontSize(10)
+      .text('No hay activos que coincidan con la selección.', M.left, y + 10, { lineBreak: false });
+    y += 30;
+  }
+  y = escribirBloque(doc, activos, y, { primera: true });
   drawFooter(doc, y);
   numerarPaginas(doc);
   return doc;
@@ -227,19 +264,21 @@ async function exportActivosPdf(req, res, next) {
     const from = buildWhere({ q, categoria, area, ubicacion, custodio, marca, estado });
     const rows = await pool.query(
       `SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} ${from.sql}
-       ORDER BY ar.numero NULLS LAST, u.nombre NULLS LAST, a.codigo NULLS LAST, a.id`,
+       ORDER BY ${req.query.separar === 'responsable' ? 'cu.nombre NULLS LAST, ' : ''}ar.numero NULLS LAST, u.nombre NULLS LAST, a.codigo NULLS LAST, a.id`,
       from.params
     );
 
-    const [ar, ub] = await Promise.all([
+    const [ar, ub, cu] = await Promise.all([
       area ? pool.query(`SELECT ${AREA_ETIQUETA} AS etiqueta FROM areas ar WHERE ar.id = $1`, [area]) : null,
-      ubicacion ? pool.query('SELECT id, nombre FROM ubicaciones WHERE id = $1', [ubicacion]) : null
+      ubicacion ? pool.query('SELECT id, nombre FROM ubicaciones WHERE id = $1', [ubicacion]) : null,
+      custodio ? pool.query('SELECT nombre FROM custodios WHERE id = $1', [custodio]) : null
     ]).then((rs) => rs.map((r) => r?.rows[0] || null));
 
     const meta = metaFrom(req, {
       sucursal: rows.rows[0]?.sucursal,
       area: ar ? ar.etiqueta : '',
-      ubicacion: ub ? etiqueta(ub.id, ub.nombre) : ''
+      ubicacion: ub ? etiqueta(ub.id, ub.nombre) : '',
+      responsable: cu ? cu.nombre : ''
     });
     const doc = new PDFDocument({
       size: 'LETTER',
