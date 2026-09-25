@@ -33,8 +33,12 @@ function periodoActual() {
 
 function metaFrom(req, extra = {}) {
   const q = req.query || {};
+  // Útiles y herramientas: la misma hoja de conteo, pero sin área ni ubicación —un útil
+  // no está en un sitio, está con una persona— y por eso SIEMPRE se corta por responsable.
+  const util = req.tipoActivo === 'UTIL';
   return {
     entidad: ENTIDAD,
+    util,
     sucursal: extra.sucursal || 'Camagüey',
     area: extra.area || '',
     ubicacion: extra.ubicacion || '',
@@ -43,7 +47,9 @@ function metaFrom(req, extra = {}) {
     periodo: q.periodo || periodoActual(),
     generadoPor: q.generadoPor || req.user?.nombre || req.user?.username || '',
     // Cada ubicación o cada responsable en sus páginas, con sus propias firmas
-    separar: q.separar === 'responsable' ? 'responsable' : (q.separar === '1' || q.separar === 'ubicacion') ? 'ubicacion' : ''
+    separar: util
+      ? 'responsable'
+      : q.separar === 'responsable' ? 'responsable' : (q.separar === '1' || q.separar === 'ubicacion') ? 'ubicacion' : ''
   };
 }
 
@@ -63,9 +69,10 @@ function drawHeader(doc, meta) {
   }
 
   doc.font('Helvetica-Bold').fontSize(12)
-    .text('Hoja para Realizar el Conteo Físico', M.left, y0 + 30, {
-      width: COL.ruleEnd - M.left, align: 'center'
-    });
+    .text(
+      meta.util ? 'Útiles y Herramientas en Uso — Conteo Físico' : 'Hoja para Realizar el Conteo Físico',
+      M.left, y0 + 30, { width: COL.ruleEnd - M.left, align: 'center' }
+    );
   doc.font('Helvetica-Bold').fontSize(11)
     .text(`Período: ${meta.periodo}`, M.left, y0 + 58, {
       width: COL.ruleEnd - M.left, align: 'center'
@@ -133,7 +140,10 @@ function drawFooter(doc, y) {
   doc.font('Helvetica').fontSize(9);
   doc.text('Responsable del Conteo Físico', M.left, yy, { width: w, lineBreak: false });
   const resp = doc._meta.responsable;
-  doc.text(resp ? 'Responsable de los activos' : 'Responsable del Área', M.left + half, yy, { width: w, lineBreak: false });
+  doc.text(
+    resp ? (doc._meta.util ? 'Responsable de los útiles' : 'Responsable de los activos') : 'Responsable del Área',
+    M.left + half, yy, { width: w, lineBreak: false }
+  );
   yy += 20;
   doc.text('Nombre(s) y Apellidos: ______________________', M.left, yy, { width: w, lineBreak: false });
   doc.text(`Nombre(s) y Apellidos: ${resp || '______________________'}`, M.left + half, yy, { width: w, lineBreak: false, ellipsis: true });
@@ -176,7 +186,32 @@ const etiqueta = (id, nombre) => (id != null ? `${id} - ${nombre}` : nombre);
 
 // Escribe un bloque Área → Ubicación → activos. Con separar === 'ubicacion' cada
 // ubicación arranca página nueva (la anterior cierra con sus firmas).
+function escribirLineas(doc, items, y) {
+  for (const a of items) {
+    y = ensureSpace(doc, y, ROW_H);
+    doc.font('Helvetica').fontSize(9);
+    doc.text(a.codigo || '', M.left, y, { width: COL.codigoFin - M.left, align: 'right', lineBreak: false });
+    // La cantidad va pegada a la descripción y no en columna propia: sólo la llevan los
+    // útiles, y una columna que casi siempre dice «1» le quita sitio a lo que sí se lee.
+    const desc = (a.descripcion || '') + (Number(a.cantidad) > 1 ? `  (x${a.cantidad})` : '');
+    doc.text(desc, COL.desc, y, { lineBreak: false, ellipsis: true, width: COL.existe - COL.desc - 16 });
+    doc.lineWidth(0.6)
+      .moveTo(COL.existe, y + 10).lineTo(COL.existe + 42, y + 10).stroke()
+      .moveTo(COL.falta, y + 10).lineTo(COL.falta + 42, y + 10).stroke();
+    y += ROW_H;
+  }
+  return y;
+}
+
 function escribirBloque(doc, activos, y, estado) {
+  // Un útil no tiene área ni ubicación: sus líneas van seguidas bajo el responsable,
+  // que ya está en la cabecera y en la firma. Meterlo en el árbol de áreas daría una
+  // página entera titulada «Sin área asignada → Sin ubicación».
+  if (doc._meta.util) {
+    estado.primera = false;
+    return escribirLineas(doc, activos, y) + 4;
+  }
+
   for (const area of agrupar(activos)) {
     let primeraDelArea = true;
     for (const ubic of area.ubicaciones) {
@@ -198,21 +233,7 @@ function escribirBloque(doc, activos, y, estado) {
         .text(`Ubicación: ${etiqueta(ubic.id, ubic.nombre)}`, M.left + 12, y, { lineBreak: false });
       y += UBIC_H;
 
-      for (const a of ubic.items) {
-        y = ensureSpace(doc, y, ROW_H);
-        doc.font('Helvetica').fontSize(9);
-        doc.text(a.codigo || '', M.left, y, {
-          width: COL.codigoFin - M.left, align: 'right', lineBreak: false
-        });
-        doc.text(a.descripcion || '', COL.desc, y, {
-          lineBreak: false, ellipsis: true,
-          width: COL.existe - COL.desc - 16
-        });
-        doc.lineWidth(0.6)
-          .moveTo(COL.existe, y + 10).lineTo(COL.existe + 42, y + 10).stroke()
-          .moveTo(COL.falta, y + 10).lineTo(COL.falta + 42, y + 10).stroke();
-        y += ROW_H;
-      }
+      y = escribirLineas(doc, ubic.items, y);
       y += 4;
     }
     y += 4;
@@ -261,10 +282,11 @@ async function exportActivosPdf(req, res, next) {
     // Un conteo físico es de lo que hay: sin filtro de estado, sólo los activos.
     const estado = req.query.estado || 'ACTIVO';
     const pool = db.getPool();
-    const from = buildWhere({ q, categoria, area, ubicacion, custodio, marca, estado });
+    const util = req.tipoActivo === 'UTIL';
+    const from = buildWhere({ q, categoria, area, ubicacion, custodio, marca, estado, tipo: util ? 'UTIL' : 'AFT' });
     const rows = await pool.query(
       `SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} ${from.sql}
-       ORDER BY ${req.query.separar === 'responsable' ? 'cu.nombre NULLS LAST, ' : ''}ar.numero NULLS LAST, u.nombre NULLS LAST, a.codigo NULLS LAST, a.id`,
+       ORDER BY ${util || req.query.separar === 'responsable' ? 'cu.nombre NULLS LAST, ' : ''}ar.numero NULLS LAST, u.nombre NULLS LAST, a.codigo NULLS LAST, a.id`,
       from.params
     );
 
@@ -284,11 +306,14 @@ async function exportActivosPdf(req, res, next) {
       size: 'LETTER',
       margin: 0,
       bufferPages: true,
-      info: { Title: 'Hoja para Realizar el Conteo Físico', Author: meta.generadoPor }
+      info: {
+        Title: util ? 'Útiles y Herramientas en Uso — Conteo Físico' : 'Hoja para Realizar el Conteo Físico',
+        Author: meta.generadoPor
+      }
     });
     const fecha = new Date().toISOString().slice(0, 10);
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="Conteo-fisico-${fecha}.pdf"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${util ? 'Utiles-y-herramientas' : 'Conteo-fisico'}-${fecha}.pdf"`);
     doc.pipe(res);
     writeConteoPdf(doc, rows.rows, meta);
     doc.end();

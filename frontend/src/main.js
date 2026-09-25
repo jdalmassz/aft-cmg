@@ -7,6 +7,7 @@ import './style.css'
 const Login = () => import('./views/LoginView.vue')
 const Dashboard = () => import('./views/DashboardView.vue')
 const Activos = () => import('./views/ActivosView.vue')
+const Utiles = () => import('./views/UtilesView.vue')
 const Responsables = () => import('./views/ResponsablesView.vue')
 const Areas = () => import('./views/AreasView.vue')
 
@@ -17,6 +18,7 @@ const router = createRouter({
     { path: '/login', component: Login },
     { path: '/inicio', component: Dashboard, meta: { auth: true } },
     { path: '/activos', component: Activos, meta: { auth: true } },
+    { path: '/utiles', component: Utiles, meta: { auth: true } },
     { path: '/responsables', component: Responsables, meta: { auth: true, admin: true } },
     { path: '/areas', component: Areas, meta: { auth: true, admin: true } },
     { path: '/:pathMatch(.*)*', redirect: '/inicio' }

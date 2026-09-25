@@ -2,7 +2,7 @@
 const AREA_ETIQUETA = `CASE WHEN ar.id IS NULL THEN NULL ELSE 'Área ' || ar.numero || COALESCE(' - ' || NULLIF(ar.nombre, ''), '') END`;
 
 const ACTIVOS_COLUMNS = `
-  a.id, a.codigo, a.descripcion, a.modelo, a.valor_cup, a.valor_usd,
+  a.id, a.tipo, a.cantidad, a.codigo, a.descripcion, a.modelo, a.valor_cup, a.valor_usd,
   a.fecha_adquisicion, a.estado, a.comentarios, a.created_at, a.updated_at,
   a.categoria_id, c.nombre AS categoria,
   a.sucursal_id, s.nombre AS sucursal,
@@ -21,10 +21,22 @@ const ACTIVOS_FROM = `
   LEFT JOIN custodios cu ON cu.id = a.custodio_id
   LEFT JOIN marcas m ON m.id = a.marca_id`;
 
-function buildWhere({ q, categoria, area, ubicacion, custodio, marca, estado }) {
+/**
+ * El WHERE de toda lectura de activos. TODAS pasan por aquí, y por eso el tipo se
+ * filtra aquí y no en cada consulta.
+ *
+ * Activos fijos y útiles y herramientas comparten tabla (ver schema.sql). El día que una
+ * consulta se olvidara del tipo, el inventario de activos fijos —el que se imprime y se
+ * firma— saldría con los martillos de la gente dentro. Poniéndolo aquí no hay dónde
+ * olvidarlo, y lo que se olvida es el parámetro: entonces sale 'AFT', que es el de
+ * siempre y el que no miente.
+ */
+function buildWhere({ q, categoria, area, ubicacion, custodio, marca, estado, tipo }) {
   const where = [];
   const params = [];
   const p = (v) => { params.push(v); return `$${params.length}`; };
+
+  where.push(`a.tipo = ${p(tipo === 'UTIL' ? 'UTIL' : 'AFT')}`);
 
   if (q) {
     where.push(`(a.descripcion ILIKE ${p('%' + q + '%')} OR a.modelo ILIKE ${p('%' + q + '%')} OR a.codigo ILIKE ${p('%' + q + '%')})`);

@@ -69,6 +69,28 @@ CREATE TABLE IF NOT EXISTS activos (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- ÚTILES Y HERRAMIENTAS: la otra mitad del inventario.
+--
+-- Un activo fijo está EN UN SITIO: un área, una ubicación, y alguien responde por él.
+-- Un útil va CON UNA PERSONA — se lo lleva a su casa si hace falta— y por eso no tiene
+-- ubicación: lo que hay que saber es quién lo tiene. Son dos controles distintos y se
+-- firman por separado, pero los datos son los mismos (código, descripción, marca, valor,
+-- estado), y tener dos tablas gemelas sería duplicar el alta, el historial y los exportes
+-- para que un día se arreglen en una y no en la otra.
+--
+-- Así que viven en la misma tabla con una marca. LA MARCA MANDA: toda lectura pasa por
+-- `buildWhere` (activos-query.js), que SIEMPRE filtra por tipo y da 'AFT' por defecto.
+-- Un filtro olvidado enseña activos fijos de menos, nunca útiles colados en el inventario
+-- de activos fijos, que es el que se firma.
+ALTER TABLE activos ADD COLUMN IF NOT EXISTS tipo TEXT NOT NULL DEFAULT 'AFT';
+ALTER TABLE activos DROP CONSTRAINT IF EXISTS activos_tipo_check;
+ALTER TABLE activos ADD CONSTRAINT activos_tipo_check CHECK (tipo IN ('AFT', 'UTIL'));
+
+-- Un activo fijo es UNO. De un útil puede haber diez iguales en la misma línea —diez
+-- destornilladores— y contarlos de uno en uno sería inventarles diez códigos.
+ALTER TABLE activos ADD COLUMN IF NOT EXISTS cantidad INTEGER NOT NULL DEFAULT 1;
+
+CREATE INDEX IF NOT EXISTS idx_activos_tipo ON activos(tipo);
 CREATE INDEX IF NOT EXISTS idx_activos_categoria ON activos(categoria_id);
 CREATE INDEX IF NOT EXISTS idx_activos_ubicacion ON activos(ubicacion_id);
 CREATE INDEX IF NOT EXISTS idx_activos_custodio ON activos(custodio_id);
@@ -99,8 +121,9 @@ SELECT a.id, 'CREADO', a.ubicacion_id, a.custodio_id, a.estado
 FROM activos a
 WHERE NOT EXISTS (SELECT 1 FROM movimientos m WHERE m.activo_id = a.id);
 
--- Backfill idempotente: código automático para activos sin código
-UPDATE activos SET codigo = 'AFT-' || LPAD(id::text, 4, '0')
+-- Backfill idempotente: código automático para los que no traen uno. El prefijo dice
+-- de qué inventario es, que es lo primero que se mira en una hoja impresa.
+UPDATE activos SET codigo = CASE WHEN tipo = 'UTIL' THEN 'UH-' ELSE 'AFT-' END || LPAD(id::text, 4, '0')
 WHERE codigo IS NULL OR codigo = '';
 
 -- Backfill idempotente: ejemplos de categorías (del Excel original)

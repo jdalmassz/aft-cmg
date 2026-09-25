@@ -54,6 +54,24 @@ async function bootstrap() {
   api.put('/activos/:id', activos.updateActivo);
   api.delete('/activos/:id', activos.deleteActivo);
 
+  /**
+   * ÚTILES Y HERRAMIENTAS: el otro inventario, por su propia puerta.
+   *
+   * Comparten tabla con los activos fijos (ver schema.sql), pero no comparten ruta: el
+   * tipo lo pone ESTA lista de rutas y no quien llama, así que una pantalla de útiles no
+   * puede leer ni escribir activos fijos ni por error ni a propósito.
+   */
+  const soloUtiles = (req, res, next) => { req.tipoActivo = 'UTIL'; next(); };
+
+  api.get('/utiles', soloUtiles, activos.listActivos);
+  api.get('/utiles/export', soloUtiles, activos.exportActivos);
+  api.get('/utiles/export/pdf', soloUtiles, exportActivosPdf);
+  api.get('/utiles/:id', soloUtiles, activos.getActivo);
+  api.get('/utiles/:id/movimientos', movimientos.movimientosByActivo);
+  api.post('/utiles', soloUtiles, activos.createActivo);
+  api.put('/utiles/:id', soloUtiles, activos.updateActivo);
+  api.delete('/utiles/:id', soloUtiles, activos.deleteActivo);
+
   api.get('/movimientos', movimientos.listMovimientos);
 
   const adm = express.Router();
