@@ -26,6 +26,17 @@ const porPagina = ref(50)
 
 const totalPaginas = computed(() => Math.max(1, Math.ceil(total.value / porPagina.value)))
 
+// Quién entra por Accesos queda asignado a una sucursal; si esa sucursal no
+// está en la base, entra pero no ve nada (y hay que decírselo).
+const usuario = computed(() => getUser() || {})
+const sinDatos = computed(() => !!usuario.value.sinDatos)
+const esGlobal = computed(() => usuario.value.rol === 'admin')
+// Los dos roles globales ven las ocho sucursales; el resto, la suya.
+const sucursalTexto = computed(() => {
+  if (esGlobal.value) return 'todas las sucursales'
+  return usuario.value.sucursalNombre || usuario.value.sucursal || 'sin sucursal'
+})
+
 const mostrar = ref(false)
 const formulario = ref({})
 const guardando = ref(false)
@@ -321,7 +332,7 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
     <div class="head">
       <div>
         <h2>Inventario de Activos</h2>
-        <p class="muted">{{ total }} registro(s) — sucursal Camagüey · <span class="hint">toca una fila para ver todos los detalles</span></p>
+        <p class="muted">{{ total }} registro(s) · {{ sucursalTexto }} · <span class="hint">toca una fila para ver todos los detalles</span></p>
       </div>
       <span class="btns">
         <button class="btn sec sm" :class="{ on: filasCompactas }" @click="toggleCompacto" :title="filasCompactas ? 'Filas normales' : 'Filas compactas (ver más registros)'"><AppIcon name="rows" :size="15" /> <span class="hbt">Compacto</span></button>
@@ -356,7 +367,12 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
 
     <div v-else-if="!activos.length" class="card vacio">
       <AppIcon name="box" :size="44" />
-      <p>No hay activos{{ total ? ' con los filtros aplicados' : ' registrados todavía' }}.</p>
+      <template v-if="sinDatos">
+        <p v-if="usuario.sucursalNombre">Tu sucursal ({{ usuario.sucursalNombre }}) todavía no tiene datos en este sistema.</p>
+        <p v-else>Entraste sin sucursal asignada en este sistema.</p>
+        <p class="hint">Aquí sólo se gestionan los datos de la sucursal Camagüey. Pide al administrador que dé de alta la tuya.</p>
+      </template>
+      <p v-else>No hay activos{{ total ? ' con los filtros aplicados' : ' registrados todavía' }}.</p>
       <button v-if="total" class="btn sec sm" @click="limpiar">Limpiar filtros</button>
     </div>
 

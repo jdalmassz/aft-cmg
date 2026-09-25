@@ -1,6 +1,8 @@
 // "Área 2" o "Área 2 - COMERCIAL" si el área tiene nombre
 const AREA_ETIQUETA = `CASE WHEN ar.id IS NULL THEN NULL ELSE 'Área ' || ar.numero || COALESCE(' - ' || NULLIF(ar.nombre, ''), '') END`;
 
+const { condicionSucursal } = require('./alcance');
+
 const ACTIVOS_COLUMNS = `
   a.id, a.tipo, a.cantidad, a.codigo, a.descripcion, a.modelo, a.valor_cup, a.valor_usd,
   a.fecha_adquisicion, a.estado, a.comentarios, a.created_at, a.updated_at,
@@ -31,7 +33,7 @@ const ACTIVOS_FROM = `
  * olvidarlo, y lo que se olvida es el parámetro: entonces sale 'AFT', que es el de
  * siempre y el que no miente.
  */
-function buildWhere({ q, categoria, area, ubicacion, custodio, marca, estado, tipo }) {
+function buildWhere({ q, categoria, area, ubicacion, custodio, marca, estado, tipo, user }) {
   const where = [];
   const params = [];
   const p = (v) => { params.push(v); return `$${params.length}`; };
@@ -47,6 +49,10 @@ function buildWhere({ q, categoria, area, ubicacion, custodio, marca, estado, ti
   if (custodio) where.push(`a.custodio_id = ${p(custodio)}`);
   if (marca) where.push(`a.marca_id = ${p(marca)}`);
   if (estado) where.push(`a.estado = ${p(estado)}`);
+
+  // Alcance por sucursal: cada sucursal sólo ve sus datos (ver alcance.js).
+  const sucursal = condicionSucursal(user, p);
+  if (sucursal) where.push(sucursal);
 
   return { sql: where.length ? 'WHERE ' + where.join(' AND ') : '', params, p };
 }

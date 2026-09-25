@@ -1,6 +1,6 @@
 <script setup>
-import { ref, onMounted } from 'vue'
-import { api, formatMoneda } from '../api'
+import { ref, computed, onMounted } from 'vue'
+import { api, formatMoneda, getUser } from '../api'
 import { ok, err } from '../toast'
 import AppIcon from '../components/AppIcon.vue'
 
@@ -9,6 +9,19 @@ const loading = ref(true)
 const error = ref('')
 const exportando = ref(false)
 const exportandoPdf = ref(false)
+
+const usuario = computed(() => getUser() || {})
+const sinDatos = computed(() => !!usuario.value.sinDatos)
+const esGlobal = computed(() => usuario.value.rol === 'admin')
+const subtitulo = computed(() => {
+  if (sinDatos.value) {
+    return usuario.value.sucursalNombre
+      ? `Tu sucursal (${usuario.value.sucursalNombre}) todavía no tiene datos en este sistema; aquí sólo se gestionan los de Camagüey.`
+      : 'Entraste sin sucursal asignada; aquí sólo se gestionan los datos de Camagüey.'
+  }
+  if (esGlobal.value) return 'Resumen del inventario de activos de todas las sucursales.'
+  return `Resumen del inventario de activos · sucursal ${usuario.value.sucursalNombre || usuario.value.sucursal}.`
+})
 
 onMounted(async () => {
   try {
@@ -40,7 +53,7 @@ async function exportarPdf() {
 <template>
   <div>
     <h2>Dashboard</h2>
-    <p class="muted">Resumen del inventario de activos de la sucursal Camagüey.</p>
+    <p class="muted">{{ subtitulo }}</p>
 
     <div v-if="loading" class="center"><span class="spinner"></span></div>
     <p v-else-if="error" class="err">{{ error }}</p>

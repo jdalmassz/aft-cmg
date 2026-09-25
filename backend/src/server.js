@@ -4,6 +4,8 @@ const path = require('path');
 const express = require('express');
 const db = require('./db');
 const auth = require('./auth');
+const authSso = require('./auth-sso');
+const authLogout = require('./auth-logout');
 const users = require('./users');
 const usersAdmin = require('./users-admin');
 const activos = require('./activos');
@@ -29,11 +31,31 @@ async function bootstrap() {
   await users.ensureAdminUser();
 
   const app = express();
+
+  // Detrás del proxy de Dokploy todo llega en http. Sin confiar en
+  // X-Forwarded-Proto, el callback de Accesos saldría con http:// (y
+  // allowedCallbackUrls exige https) y la cookie no marcaría `secure`.
+  // TRUST_PROXY: número de saltos (por defecto 1), o una lista de IPs.
+  const tp = process.env.TRUST_PROXY;
+  app.set('trust proxy', tp === undefined ? 1 : /^\d+$/.test(tp) ? Number(tp) : tp);
+
   app.use(cors());
   app.use(express.json({ limit: '5mb' }));
+  app.use(require('cookie-parser')());
 
   app.get('/health', (req, res) => res.json({ ok: true, servicio: 'aft-cmg-api' }));
 
+  // Accesos (SSO): la puerta de entrada. Van sin middleware de auth.
+  // El botón de entrada es un enlace (<a href>), así que entra por GET; se
+  // acepta POST por si se llama desde el servidor, como en delivery.
+  // El login local queda como respaldo: si la clave no está configurada,
+  // /entrar redirige a ?sso=nodisponible y el usuario entra por abajo.
+  app.get('/api/auth/entrar', authSso.entrar);
+  app.post('/api/auth/entrar', authSso.entrar);
+  app.get('/api/auth/sso/callback', authSso.callback);
+  // Sin token: lo único que hace es borrar la cookie httpOnly, y tiene que
+  // funcionar también cuando la sesión ya expiró (si no, la cookie se queda).
+  app.post('/api/auth/logout', authLogout.logout);
   app.post('/auth/login', users.login);
 
   const api = express.Router();
@@ -52,7 +74,10 @@ async function bootstrap() {
   api.get('/activos/:id/movimientos', movimientos.movimientosByActivo);
   api.post('/activos', activos.createActivo);
   api.put('/activos/:id', activos.updateActivo);
-  api.delete('/activos/:id', activos.deleteActivo);
+  // Borrar es destructivo sobre el inventario de la empresa: sólo admin (la
+  // API ya lo documentaba así; con los siete roles de Accesos entrando ya no
+  // es un detalle).
+  api.delete('/activos/:id', auth.adminOnly, activos.deleteActivo);
 
   /**
    * ÚTILES Y HERRAMIENTAS: el otro inventario, por su propia puerta.
@@ -70,7 +95,8 @@ async function bootstrap() {
   api.get('/utiles/:id/movimientos', movimientos.movimientosByActivo);
   api.post('/utiles', soloUtiles, activos.createActivo);
   api.put('/utiles/:id', soloUtiles, activos.updateActivo);
-  api.delete('/utiles/:id', soloUtiles, activos.deleteActivo);
+  // Mismo criterio que en /activos: borrar es destructivo sobre el inventario.
+  api.delete('/utiles/:id', soloUtiles, auth.adminOnly, activos.deleteActivo);
 
   api.get('/movimientos', movimientos.listMovimientos);
 

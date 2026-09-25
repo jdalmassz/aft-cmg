@@ -1,9 +1,22 @@
 const bcrypt = require('bcryptjs');
 const db = require('./db');
 const { sign } = require('./auth');
+const alcance = require('./alcance');
+const sso = require('./procovar-auth');
 const crypto = require('crypto');
 
 const uuid = () => crypto.randomUUID();
+
+// ¿Tiene datos esta persona en este sistema? Su sucursal tiene que existir en
+// la base; si no, entra pero no ve nada (se le avisa para que se note y se
+// arregle). Quien ve las ocho siempre tiene datos.
+async function sinDatosDe(pool, user) {
+  if (alcance.veTodasLasSucursales(user)) return false;
+  const nombre = sso.nombreSucursal(alcance.sucursalDe(user));
+  if (!nombre) return true;
+  const r = await pool.query('SELECT 1 FROM sucursales WHERE nombre = $1', [nombre]);
+  return r.rowCount === 0;
+}
 
 async function login(req, res) {
   const { username, password } = req.body || {};
@@ -14,15 +27,27 @@ async function login(req, res) {
   if (!user.activo) return res.status(403).json({ error: 'Usuario desactivado' });
   const ok = await bcrypt.compare(password, user.password_hash);
   if (!ok) return res.status(401).json({ error: 'Credenciales inválidas' });
-  return res.json({ token: sign(user), user: publicUser(user) });
+  return res.json({ token: sign(user), user: await publicUser(db.getPool(), user) });
 }
 
-function publicUser(u) {
-  return { id: u.id, username: u.username, nombre: u.nombre, rol: u.rol, activo: u.activo };
+async function publicUser(pool, u) {
+  return {
+    id: u.id,
+    username: u.username,
+    nombre: u.nombre,
+    rol: u.rol,
+    activo: u.activo,
+    sucursal: alcance.sucursalDe(u),
+    sucursalNombre: sso.nombreSucursal(alcance.sucursalDe(u)),
+    rol_accesos: u.rol_accesos || null,
+    sinDatos: await sinDatosDe(pool, u)
+  };
 }
 
-async function me(req, res) {
-  return res.json({ user: req.user });
+async function me(req, res, next) {
+  try {
+    return res.json({ user: await publicUser(db.getPool(), req.user) });
+  } catch (e) { next(e); }
 }
 
 async function ensureAdminUser() {
@@ -33,10 +58,10 @@ async function ensureAdminUser() {
   if (r.rowCount > 0) return;
   const hash = await bcrypt.hash(password, 10);
   await pool.query(
-    'INSERT INTO users (id, username, password_hash, nombre, rol) VALUES ($1, $2, $3, $4, $5)',
-    [uuid(), username, hash, 'Administrador', 'admin']
+    'INSERT INTO users (id, username, password_hash, nombre, rol, sucursal) VALUES ($1, $2, $3, $4, $5, $6)',
+    [uuid(), username, hash, 'Administrador', 'admin', alcance.SUCURSAL_LOCAL]
   );
   console.log(`Usuario admin por defecto creado: ${username}`);
 }
 
-module.exports = { login, me, ensureAdminUser };
+module.exports = { login, me, ensureAdminUser, sinDatosDe };

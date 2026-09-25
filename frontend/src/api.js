@@ -61,11 +61,20 @@ const api = {
 }
 
 const login = (username, password) => api.post('/auth/login', { username, password })
-const fetchMe = () => api.get('/api/me')
+const fetchMe = () => api.get('/api/me').then((data) => {
+  // El token del SSO vive en cookie httpOnly (no visible para JS); aquí solo
+  // guardamos quién es, para que el router no tenga que preguntar cada vez.
+  if (data && data.user) setSession(null, data.user)
+  return data
+})
+// El token del SSO vive en cookie httpOnly, que el frontend no puede borrar;
+// el servidor la borra en /api/auth/logout (sin exigir token: si la sesión ya
+// expiró, la cookie tendría que limpiarse igual).
+const logout = () => request('POST', '/api/auth/logout').then(clearSession)
 
 function formatMoneda(n) {
   if (n === null || n === undefined || n === '') return '—'
   return Number(n).toLocaleString('es-CU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-export { api, login, fetchMe, setSession, clearSession, getUser, getToken, formatMoneda }
+export { api, login, fetchMe, logout, setSession, clearSession, getUser, getToken, formatMoneda }

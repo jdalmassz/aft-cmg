@@ -2,6 +2,7 @@ const db = require('./db');
 const ExcelJS = require('exceljs');
 const { registerMovimiento } = require('./movimientos');
 const { ACTIVOS_COLUMNS, ACTIVOS_FROM, AREA_ETIQUETA, buildWhere } = require('./activos-query');
+const alcance = require('./alcance');
 
 /**
  * De qué inventario va esta petición: activos fijos o útiles y herramientas.
@@ -16,7 +17,7 @@ const esUtil = (req) => tipoDe(req) === 'UTIL';
 async function listActivos(req, res, next) {
   try {
     const { q, categoria, area, ubicacion, custodio, marca, estado, limite = 200, offset = 0 } = req.query;
-    const from = buildWhere({ q, categoria, area, ubicacion, custodio, marca, estado, tipo: tipoDe(req) });
+    const from = buildWhere({ q, categoria, area, ubicacion, custodio, marca, estado, tipo: tipoDe(req), user: req.user });
     const total = await db.getPool().query(`SELECT COUNT(*)::int AS n ${ACTIVOS_FROM} ${from.sql}`, from.params);
     const rows = await db.getPool().query(
       `SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} ${from.sql} ORDER BY a.id DESC LIMIT ${from.p(limite)} OFFSET ${from.p(offset)}`,
@@ -168,7 +169,7 @@ async function exportActivos(req, res, next) {
   try {
     const { q, categoria, area, ubicacion, custodio, marca, estado } = req.query;
     const util = esUtil(req);
-    const from = buildWhere({ q, categoria, area, ubicacion, custodio, marca, estado, tipo: tipoDe(req) });
+    const from = buildWhere({ q, categoria, area, ubicacion, custodio, marca, estado, tipo: tipoDe(req), user: req.user });
     // '1' / 'ubicacion': una hoja por ubicación · 'responsable': una hoja por responsable
     // Un útil no tiene ubicación, así que el único corte que existe es el responsable:
     // pedir «separar por ubicación» ahí sería una hoja «Sin ubicación» con todo dentro.
@@ -219,11 +220,15 @@ async function exportActivos(req, res, next) {
 async function getActivo(req, res, next) {
   try {
     // Con el tipo: entrando por `/utiles/7` no se puede leer el activo fijo 7.
+    const params = [req.params.id, tipoDe(req)];
+    const alc = alcance.condicionSucursal(req.user, (v) => { params.push(v); return `$${params.length}`; });
+    // Un activo de otra sucursal no existe para quien lo pide: 404, no 403
+    // (un 403 confirmaría que ese activo está ahí).
     const r = await db.getPool().query(
-      `SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} WHERE a.id = $1 AND a.tipo = $2`,
-      [req.params.id, tipoDe(req)]
+      `SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} WHERE a.id = $1 AND a.tipo = $2${alc ? ` AND ${alc}` : ''}`,
+      params
     );
-    if (r.rowCount === 0) return res.status(404).json({ error: 'No encontrado' });
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Activo no encontrado' });
     return res.json(r.rows[0]);
   } catch (e) { next(e); }
 }
@@ -235,6 +240,10 @@ async function createActivo(req, res, next) {
     for (const f of needed) {
       if (!b[f]) return res.status(400).json({ error: `Campo requerido: ${f}` });
     }
+    const alc = await alcance.alcanceEscritura(db.getPool(), req.user);
+    if (!alc) {
+      return res.status(403).json({ error: 'Tu sucursal no tiene datos en este sistema' });
+    }
     const util = esUtil(req);
     const keys = ['codigo', 'descripcion', 'marca_id', 'modelo', 'valor_cup', 'valor_usd', 'categoria_id', 'sucursal_id', 'fecha_adquisicion', 'ubicacion_id', 'custodio_id', 'estado', 'comentarios', 'tipo', 'cantidad'];
     const values = keys.map((k) => {
@@ -245,6 +254,9 @@ async function createActivo(req, res, next) {
       if (k === 'ubicacion_id' && util) return null;
       return b[k] ?? (k === 'estado' ? 'ACTIVO' : null);
     });
+    // Cada sucursal sólo escribe en la suya: el resto no puede colar un
+    // activo en otra sucursal mandando sucursal_id en el cuerpo.
+    if (!alc.todas) values[keys.indexOf('sucursal_id')] = alc.id;
     const r = await db.getPool().query(
       `INSERT INTO activos (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING id`,
       values
@@ -284,14 +296,27 @@ async function updateActivo(req, res, next) {
       if (k in b) { sets.push(`${k} = ${p(b[k])}`); }
     }
     if (!sets.length) return res.status(400).json({ error: 'Sin campos a actualizar' });
+
+    // Dónde puede escribir esta persona: su sucursal, o las ocho si su rol es
+    // global. Si su sucursal no está en la base, no hay nada que tocar.
+    const alc = await alcance.alcanceEscritura(db.getPool(), req.user);
+    if (!alc) return res.status(403).json({ error: 'Tu sucursal no tiene datos en este sistema' });
+    if (!alc.todas && 'sucursal_id' in b && b.sucursal_id != null && Number(b.sucursal_id) !== alc.id) {
+      return res.status(403).json({ error: 'No puedes mover activos a otra sucursal' });
+    }
+
+    // La fila tiene que ser de su sucursal y de SU inventario; si no, no existe
+    // para ella (404). Así `/utiles/7` no actualiza el activo fijo 7.
+    const paramsPrev = [req.params.id, tipoDe(req)];
+    const condPrev = alcance.condicionSucursal(req.user, (v) => { paramsPrev.push(v); return `$${paramsPrev.length}`; });
+    const prev = await db.getPool().query(
+      `SELECT id, ubicacion_id, custodio_id, estado FROM activos WHERE id = $1 AND tipo = $2${condPrev ? ` AND ${condPrev}` : ''}`,
+      paramsPrev
+    );
+    if (prev.rowCount === 0) return res.status(404).json({ error: 'Activo no encontrado' });
+
     sets.push(`updated_at = now()`);
     params.push(req.params.id);
-
-    const prev = await db.getPool().query(
-      'SELECT id, ubicacion_id, custodio_id, estado FROM activos WHERE id = $1 AND tipo = $2',
-      [req.params.id, tipoDe(req)]
-    );
-    if (prev.rowCount === 0) return res.status(404).json({ error: 'No encontrado' });
 
     const upd = await db.getPool().query(`UPDATE activos SET ${sets.join(', ')} WHERE id = $${params.length}`, params);
     if (upd.rowCount === 0) return res.status(404).json({ error: 'No encontrado' });
@@ -320,11 +345,13 @@ async function updateActivo(req, res, next) {
 
 async function deleteActivo(req, res, next) {
   try {
+    const params = [req.params.id, tipoDe(req)];
+    const cond = alcance.condicionSucursal(req.user, (v) => { params.push(v); return `$${params.length}`; });
     const r = await db.getPool().query(
-      'DELETE FROM activos WHERE id = $1 AND tipo = $2 RETURNING id',
-      [req.params.id, tipoDe(req)]
+      `DELETE FROM activos WHERE id = $1 AND tipo = $2${cond ? ` AND ${cond}` : ''} RETURNING id`,
+      params
     );
-    if (r.rowCount === 0) return res.status(404).json({ error: 'No encontrado' });
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Activo no encontrado' });
     return res.json({ ok: true });
   } catch (e) { next(e); }
 }
@@ -357,30 +384,63 @@ async function dashboard(req, res, next) {
     // tabla, cada cuenta de aquí lleva su `tipo = 'AFT'`: sin eso, el total de activos
     // fijos subiría con cada martillo que alguien diera de alta. Los útiles se cuentan
     // aparte, en su propia cifra.
+    //
+    // Cada consulta lleva su propio array de parámetros: el alcance por
+    // sucursal añade el suyo dentro de cada una.
+    const nuevo = () => {
+      const params = [];
+      return { params, p: (v) => { params.push(v); return `$${params.length}`; } };
+    };
+
+    const qTotal = nuevo();
+    const cTotal = alcance.condicionSucursal(req.user, qTotal.p);
+
+    const qCat = nuevo();
+    const cCat = alcance.condicionSucursal(req.user, qCat.p);
+
+    const qUbi = nuevo();
+    const cUbi = alcance.condicionSucursal(req.user, qUbi.p);
+
+    const qEst = nuevo();
+    const cEst = alcance.condicionSucursal(req.user, qEst.p);
+
+    const qVal = nuevo();
+    const estadoParam = qVal.p('ACTIVO');
+    const cVal = alcance.condicionSucursal(req.user, qVal.p);
+
+    const qRec = nuevo();
+    const cRec = alcance.condicionSucursal(req.user, qRec.p);
+
+    const qTop = nuevo();
+    const cTop = alcance.condicionSucursal(req.user, qTop.p);
+
+    const qUti = nuevo();
+    const cUti = alcance.condicionSucursal(req.user, qUti.p);
+
     const [total, porCategoria, porUbicacion, porEstado, valores, recientes, custodiosTop, utiles] = await Promise.all([
-      dbp.query("SELECT COUNT(*)::int AS total FROM activos WHERE tipo = 'AFT'"),
+      dbp.query(`SELECT COUNT(*)::int AS total FROM activos a WHERE a.tipo = 'AFT'${cTotal ? ` AND ${cTotal}` : ''}`, qTotal.params),
       dbp.query(`
         SELECT c.nombre, COUNT(a.id)::int AS cantidad
-        FROM categorias c LEFT JOIN activos a ON a.categoria_id = c.id AND a.tipo = 'AFT'
-        GROUP BY c.id, c.nombre ORDER BY cantidad DESC`),
+        FROM categorias c LEFT JOIN activos a ON a.categoria_id = c.id AND a.tipo = 'AFT'${cCat ? ` AND ${cCat}` : ''}
+        GROUP BY c.id, c.nombre ORDER BY cantidad DESC`, qCat.params),
       dbp.query(`
         SELECT u.nombre, COUNT(a.id)::int AS cantidad
-        FROM ubicaciones u LEFT JOIN activos a ON a.ubicacion_id = u.id AND a.estado = 'ACTIVO' AND a.tipo = 'AFT'
-        GROUP BY u.id, u.nombre ORDER BY u.nombre`),
-      dbp.query("SELECT estado, COUNT(*)::int AS cantidad FROM activos WHERE tipo = 'AFT' GROUP BY estado"),
-      dbp.query("SELECT COALESCE(SUM(valor_usd),0)::numeric AS valor_usd, COALESCE(SUM(valor_cup),0)::numeric AS valor_cup FROM activos WHERE estado = $1 AND tipo = 'AFT'", ['ACTIVO']),
-      dbp.query(`SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} WHERE a.tipo = 'AFT' ORDER BY a.created_at DESC LIMIT 5`),
+        FROM ubicaciones u LEFT JOIN activos a ON a.ubicacion_id = u.id AND a.estado = 'ACTIVO' AND a.tipo = 'AFT'${cUbi ? ` AND ${cUbi}` : ''}
+        GROUP BY u.id, u.nombre ORDER BY u.nombre`, qUbi.params),
+      dbp.query(`SELECT estado, COUNT(*)::int AS cantidad FROM activos a WHERE a.tipo = 'AFT'${cEst ? ` AND ${cEst}` : ''} GROUP BY estado`, qEst.params),
+      dbp.query(`SELECT COALESCE(SUM(valor_usd),0)::numeric AS valor_usd, COALESCE(SUM(valor_cup),0)::numeric AS valor_cup FROM activos a WHERE a.estado = ${estadoParam} AND a.tipo = 'AFT'${cVal ? ` AND ${cVal}` : ''}`, qVal.params),
+      dbp.query(`SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} WHERE a.tipo = 'AFT'${cRec ? ` AND ${cRec}` : ''} ORDER BY a.created_at DESC LIMIT 5`, qRec.params),
       dbp.query(`
         SELECT cu.nombre, COUNT(a.id)::int AS cantidad
-        FROM custodios cu JOIN activos a ON a.custodio_id = cu.id AND a.tipo = 'AFT'
-        GROUP BY cu.id, cu.nombre ORDER BY cantidad DESC LIMIT 10`),
+        FROM custodios cu JOIN activos a ON a.custodio_id = cu.id AND a.tipo = 'AFT'${cTop ? ` AND ${cTop}` : ''}
+        GROUP BY cu.id, cu.nombre ORDER BY cantidad DESC LIMIT 10`, qTop.params),
       // Los útiles: cuántas líneas, cuántas piezas y cuántos responsables los tienen.
       dbp.query(`
         SELECT COUNT(*)::int AS lineas,
                COALESCE(SUM(cantidad), 0)::int AS piezas,
                COUNT(DISTINCT custodio_id)::int AS responsables,
                COUNT(*) FILTER (WHERE custodio_id IS NULL)::int AS sin_responsable
-        FROM activos WHERE tipo = 'UTIL'`)
+        FROM activos a WHERE a.tipo = 'UTIL'${cUti ? ` AND ${cUti}` : ''}`, qUti.params)
     ]);
     return res.json({
       total: total.rows[0].total,

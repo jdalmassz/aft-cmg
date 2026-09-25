@@ -283,7 +283,7 @@ async function exportActivosPdf(req, res, next) {
     const estado = req.query.estado || 'ACTIVO';
     const pool = db.getPool();
     const util = req.tipoActivo === 'UTIL';
-    const from = buildWhere({ q, categoria, area, ubicacion, custodio, marca, estado, tipo: util ? 'UTIL' : 'AFT' });
+    const from = buildWhere({ q, categoria, area, ubicacion, custodio, marca, estado, tipo: util ? 'UTIL' : 'AFT', user: req.user });
     const rows = await pool.query(
       `SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} ${from.sql}
        ORDER BY ${util || req.query.separar === 'responsable' ? 'cu.nombre NULLS LAST, ' : ''}ar.numero NULLS LAST, u.nombre NULLS LAST, a.codigo NULLS LAST, a.id`,

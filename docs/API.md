@@ -8,11 +8,31 @@ correspondiente.
 
 ## Autenticación
 
-Casi todas las rutas exigen un token JWT en la cabecera:
+Hay dos puertas de entrada: **Accesos** (`auth.procovar.cloud`, la normal) y el
+**login local** con usuario y contraseña, que queda como respaldo por si Accesos
+no está montado.
 
-```
-Authorization: Bearer <token>
-```
+### Entrar por Accesos
+
+| Endpoint | Método | Descripción |
+|---|---|---|
+| `/api/auth/entrar?returnTo=/activos` | GET (o POST) | Redirige a Accesos. `returnTo` es opcional y **se valida contra el propio origen** |
+| `/api/auth/sso/callback?code=…` | GET | Vuelve de Accesos con el código (60 s, un solo uso) y canjea el token |
+| `/auth/login` | POST | Login local de respaldo `{ username, password }` |
+| `/api/auth/logout` | POST | Borra la cookie httpOnly. **No exige token**: tiene que funcionar también con la sesión ya caducada |
+
+Tras el callback la sesión viaja en una **cookie `httpOnly`** (`aft_sso`), no en
+`localStorage`: el callback es servidor y esa es la única forma de escribirla.
+Las peticiones pueden llevar el token igual en `Authorization: Bearer <jwt>`, que
+es como funciona el login local.
+
+Códigos de error en la URL (el motivo entero va al registro del servidor):
+
+| Query | Significado |
+|---|---|
+| `?sso=nodisponible` | Falta `AFT_AUTH_SIGNING_KEY`; se usa el login local |
+| `?sso=sincodigo` | Vino al callback sin `?code=` |
+| `?sso=error` | Falló la ida o el canje (firma, `callbackUrl` no dada de alta, código caducado/reutilizado) |
 
 ### `POST /auth/login`
 
@@ -25,13 +45,23 @@ Respuesta `200`:
 ```json
 {
   "token": "<jwt>",
-  "user": { "id": "...", "username": "admin", "nombre": "Administrador", "rol": "admin", "activo": true }
+  "user": { "id": "...", "username": "admin", "nombre": "Administrador", "rol": "admin",
+            "activo": true, "sucursal": "CAM", "sucursalNombre": "Camagüey",
+            "rol_accesos": null, "sinDatos": false }
 }
 ```
 
 ### `GET /api/me`
 
-Devuelve el usuario autenticado.
+Devuelve el usuario autenticado con esos mismos campos:
+
+| Campo | Qué es |
+|---|---|
+| `rol` | Rol interno: `admin` o `usuario` |
+| `sucursal` | Código de la sucursal en Accesos (`CAM`, `GR`, …); `null` si no la hay |
+| `sucursalNombre` | Nombre de esa sucursal (`Camagüey`, …); `null` si no está en la tabla |
+| `rol_accesos` | El rol tal cual venía de Accesos (uno de los siete); `null` en cuentas locales |
+| `sinDatos` | `true` si su sucursal no tiene datos en este sistema (entra, pero no ve nada) |
 
 ### `POST /api/me/password`
 
@@ -39,6 +69,29 @@ Cambia la propia contraseña.
 ```json
 { "current": "admin123", "nuevo": "nueva-clave" }
 ```
+
+### Roles y sucursales (los siete, en un solo sitio)
+
+La traducción vive en `backend/src/procovar-auth.js`; el resto de la aplicación
+sólo mira `rol` y `sucursal`.
+
+| Rol de Accesos | Rol interno | Alcance |
+|---|---|---|
+| `DESARROLLADOR` | `admin` | las ocho sucursales |
+| `SUPER ADMIN` | `admin` | las ocho sucursales |
+| `GERENTE` | `usuario` | su sucursal |
+| `ADMINISTRADOR` | `usuario` | su sucursal (**una**: no es admin del sistema) |
+| `SUPERVISOR` | `usuario` | su sucursal |
+| `GESTOR` | `usuario` | su sucursal |
+| `OPERADOR` | `usuario` | su sucursal |
+| cualquier otro | `usuario` | su sucursal (rol desconocido → el de **menos** permisos) |
+
+La sucursal sale del `slug` de la organización en Accesos, en mayúsculas
+(`cam` → `CAM`). **Cada sucursal sólo ve sus datos**: activos, dashboard,
+historial y exportaciones se filtran por `sucursales.nombre`. Si la sucursal de
+la persona no está en la base, entra igual pero no ve nada (`sinDatos: true`).
+
+Las cuentas locales (las creadas con `/api/admin/users`) son de Camagüey.
 
 ## Catálogo
 
@@ -139,9 +192,15 @@ Cuerpo (solo `descripcion` es obligatorio):
 ```
 Devuelve el activo creado con `201`.
 
+`sucursal_id` se **fuerza al de la propia sucursal** si el usuario no es de los
+roles globales; si su sucursal no tiene datos en el sistema → `403`.
+
 ### `PUT /api/activos/:id`
 
 Actualiza solo los campos presentes en el cuerpo.
+
+Un usuario de una sucursal no puede mover el activo a otra (`403`), ni ver ni
+editar activos de otra sucursal (`404`).
 
 ### `DELETE /api/activos/:id`
 
@@ -151,9 +210,13 @@ Elimina (solo rol `admin`). Devuelve `{ "ok": true }`.
 
 - `GET /api/admin/users`
 - `POST /api/admin/users`
-  `{ "username", "password", "nombre?", "rol?" }` (`rol`: `admin` | `usuario`)
+  `{ "username", "password", "nombre?", "rol?", "sucursal?" }`
+  (`rol`: `admin` | `usuario`; `sucursal`: código de las ocho, por defecto
+  `CAM`; un código que no sea de las ocho → `400`)
 - `PUT /api/admin/users/:id`
-  Campos parciales: `nombre`, `rol`, `activo` (bool), `password`.
+  Campos parciales: `nombre`, `rol`, `activo` (bool), `password`, `sucursal`.
+
+`GET /api/admin/users` devuelve además `email`, `sucursal` y `rol_accesos`.
 
 ## Admin (responsables / custodios) — solo rol `admin`
 
@@ -173,7 +236,7 @@ Nombres duplicados → `400` "Ya existe un responsable con ese nombre".
 | Código | Significado |
 |---|---|
 | 401 | Token ausente/inválido o credenciales incorrectas |
-| 403 | Requiere rol administrador o usuario desactivado |
-| 400 | Faltan campos o datos inválidos |
-| 404 | Recurso no encontrado |
+| 403 | Requiere rol administrador, usuario desactivado, sucursal sin datos o intento de escribir en otra sucursal |
+| 400 | Faltan campos o datos inválidos (incluida una `sucursal` que no es de las ocho) |
+| 404 | Recurso no encontrado (también cuando el activo es de otra sucursal) |
 | 500 | Error interno (mensaje con el motivo) |

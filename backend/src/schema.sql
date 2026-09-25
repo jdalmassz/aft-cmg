@@ -11,6 +11,15 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- Identidad compartida con Accesos: el correo. Nunca se borra la fila local,
+-- sólo se actualiza en cada entrada (es a donde apuntan sus activos).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;
+-- Código de la sucursal en Accesos (CAM, GR, GTO, HAB, HOL, SS, STG, TUN).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS sucursal TEXT;
+-- Rol tal cual viene de Accesos (uno de los siete); vacío en cuentas locales.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS rol_accesos TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS categorias (
   id SERIAL PRIMARY KEY,
   nombre TEXT UNIQUE NOT NULL,
