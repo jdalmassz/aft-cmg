@@ -10,11 +10,16 @@ function sign(user) {
 
 async function authMiddleware(req, res, next) {
   const header = req.headers.authorization || '';
-  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  let token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  // El callback SSO guarda el token en cookie httpOnly; el navegador la envía
+  // automáticamente. Sin esto, las peticiones tras el login no llegaban
+  // autenticadas (delivery ya sabía leer esa cookie — era el camino de respaldo
+  // que nadie usaba).
+  if (!token) token = req.cookies && req.cookies.aft_sso;
   if (!token) return res.status(401).json({ error: 'Token requerido' });
   try {
     const payload = jwt.verify(token, JWT_SECRET);
-    const r = await db.getPool().query('SELECT id, username, nombre, rol, activo FROM users WHERE id = $1', [payload.uid]);
+    const r = await db.getPool().query('SELECT id, username, nombre, rol, activo, email, sucursal, rol_accesos FROM users WHERE id = $1', [payload.uid]);
     if (r.rowCount === 0) return res.status(401).json({ error: 'Usuario no existe' });
     if (!r.rows[0].activo) return res.status(403).json({ error: 'Usuario desactivado' });
     req.user = r.rows[0];

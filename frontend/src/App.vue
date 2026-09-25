@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getUser, clearSession } from './api'
+import { getUser, clearSession, logout as doLogout } from './api'
 import AppIcon from './components/AppIcon.vue'
 import Toasts from './components/Toasts.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
@@ -24,8 +24,10 @@ function toggleColapsado() {
   localStorage.setItem('aft_sidebar', colapsado.value ? '1' : '0')
 }
 
-function logout() {
-  clearSession()
+async function logout() {
+  // La cookie httpOnly la borra el servidor (el frontend no puede tocarla);
+  // la sesión local también se limpia aquí por si el token ya había expirado.
+  try { await doLogout() } catch { clearSession() }
   router.push('/login')
 }
 </script>

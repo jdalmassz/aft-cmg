@@ -1,4 +1,5 @@
 const db = require('./db');
+const alcance = require('./alcance');
 
 const MOV_COLUMNS = `
   m.id, m.tipo, m.ubicacion_origen_id, m.ubicacion_destino_id,
@@ -31,9 +32,13 @@ async function registerMovimiento(pool, mov) {
 
 async function movimientosByActivo(req, res, next) {
   try {
+    const params = [req.params.id];
+    // El historial sigue al activo: si el activo es de otra sucursal, tampoco
+    // se ve su historial (404 de fondo, no un 403 que delataría que existe).
+    const cond = alcance.condicionSucursal(req.user, (v) => { params.push(v); return `$${params.length}`; });
     const r = await db.getPool().query(
-      `SELECT ${MOV_COLUMNS} ${MOV_FROM} WHERE m.activo_id = $1 ORDER BY m.created_at DESC, m.id DESC LIMIT 500`,
-      [req.params.id]
+      `SELECT ${MOV_COLUMNS} ${MOV_FROM} WHERE m.activo_id = $1${cond ? ` AND ${cond}` : ''} ORDER BY m.created_at DESC, m.id DESC LIMIT 500`,
+      params
     );
     return res.json({ movimientos: r.rows });
   } catch (e) { next(e); }
@@ -47,6 +52,8 @@ async function listMovimientos(req, res, next) {
     const p = (v) => { params.push(v); return `$${params.length}`; };
     if (activo_id) where.push(`m.activo_id = ${p(activo_id)}`);
     if (q) where.push(`(a.descripcion ILIKE ${p('%' + q + '%')} OR a.codigo ILIKE ${p('%' + q + '%')})`);
+    const cond = alcance.condicionSucursal(req.user, p);
+    if (cond) where.push(cond);
     const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
     const r = await db.getPool().query(
       `SELECT ${MOV_COLUMNS} ${MOV_FROM} ${whereSql} ORDER BY m.created_at DESC, m.id DESC LIMIT ${p(limit)}`,
