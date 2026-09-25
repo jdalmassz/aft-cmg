@@ -263,10 +263,11 @@ async function createActivo(req, res, next) {
     );
     const nuevoId = r.rows[0].id;
     if (!values[keys.indexOf('codigo')]) {
-      // El prefijo dice de qué inventario es, que es lo primero que se busca en una hoja.
+      // El código es sólo el número, con cuatro ceros por delante. El inventario
+      // al que pertenece lo dice la columna `tipo`, no el código.
       await db.getPool().query(
-        `UPDATE activos SET codigo = $2 || LPAD($1::text, 4, '0') WHERE id = $1`,
-        [nuevoId, util ? 'UH-' : 'AFT-']
+        `UPDATE activos SET codigo = LPAD($1::text, 4, '0') WHERE id = $1`,
+        [nuevoId]
       );
     }
     await registerMovimiento(db.getPool(), {

@@ -1,9 +1,17 @@
+import { ref } from 'vue'
+
 let TOKEN = localStorage.getItem('aft_token') || null
-let USER = JSON.parse(localStorage.getItem('aft_user') || 'null')
+
+// El usuario va en una ref, no en una variable suelta. Con el SSO no hay login
+// en la pantalla: el guard llama a /api/me y eso pasa DESPUÉS del primer render.
+// Si getUser() devolviera una variable normal, el computed del lateral se
+// evaluaría una vez con null y se quedaría cacheado: el pie mostraba «Usuario»
+// sin nombre y sin cambiar nunca.
+const USER = ref(JSON.parse(localStorage.getItem('aft_user') || 'null'))
 
 function setSession(token, user) {
   TOKEN = token
-  USER = user
+  USER.value = user || null
   if (token) localStorage.setItem('aft_token', token)
   else localStorage.removeItem('aft_token')
   if (user) localStorage.setItem('aft_user', JSON.stringify(user))
@@ -19,7 +27,7 @@ function getToken() {
 }
 
 function getUser() {
-  return USER
+  return USER.value
 }
 
 async function request(method, url, body) {
