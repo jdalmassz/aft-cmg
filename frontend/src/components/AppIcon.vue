@@ -110,6 +110,10 @@ defineProps({
       <polyline points="16 17 21 12 16 7" />
       <line x1="21" y1="12" x2="9" y2="12" />
     </template>
+    <template v-else-if="name === 'eye'">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" />
+    </template>
   </svg>
 </template>
 

@@ -130,10 +130,20 @@ SELECT a.id, 'CREADO', a.ubicacion_id, a.custodio_id, a.estado
 FROM activos a
 WHERE NOT EXISTS (SELECT 1 FROM movimientos m WHERE m.activo_id = a.id);
 
--- Backfill idempotente: código automático para los que no traen uno. El prefijo dice
--- de qué inventario es, que es lo primero que se mira en una hoja impresa.
-UPDATE activos SET codigo = CASE WHEN tipo = 'UTIL' THEN 'UH-' ELSE 'AFT-' END || LPAD(id::text, 4, '0')
-WHERE codigo IS NULL OR codigo = '';
+-- Backfill idempotente: el código es sólo el número (cuatro dígitos), sin prefijo:
+-- el inventario lo dice la columna `tipo`. Aquí se pasan a número los que se
+-- generaron con el prefijo AFT-/UH- y los que no traían código. Los códigos
+-- escritos a mano no se tocan: su forma no es la del prefijo con el id de la fila.
+-- Y si con eso chocarían con otro código único, esa fila se queda como está antes
+-- que romper el arranque de la aplicación.
+UPDATE activos SET codigo = LPAD(id::text, 4, '0')
+WHERE (codigo IS NULL OR codigo = ''
+       OR codigo = 'AFT-' || LPAD(id::text, 4, '0')
+       OR codigo = 'UH-' || LPAD(id::text, 4, '0'))
+  AND NOT EXISTS (
+    SELECT 1 FROM activos b
+    WHERE b.id <> activos.id AND b.codigo = LPAD(activos.id::text, 4, '0')
+  );
 
 -- Backfill idempotente: ejemplos de categorías (del Excel original)
 UPDATE categorias SET ejemplos = CASE nombre

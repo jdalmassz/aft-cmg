@@ -129,6 +129,9 @@ async function callback(req, res) {
       `SSO entrada: ${user.email || user.id} · rol_accesos=${rolAccesos || 'desconocido'} · ` +
       `rol=${rol} · sucursal=${sucursal || 'ninguna'}`
     );
+    // TEMPORAL: la forma real de memberships/roles que devuelve Accesos en
+    // producción. Borrar esta línea en cuanto se lea el registro.
+    console.log(`SSO crudo: ${JSON.stringify({ memberships, roles })}`);
 
     const token = sign(localUser);
     res.cookie(sso.SSO_COOKIE, token, cookieOpts(req));

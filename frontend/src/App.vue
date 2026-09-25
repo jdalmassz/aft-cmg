@@ -14,6 +14,19 @@ const isAuthPage = computed(() => route.path === '/login')
 const menuOpen = ref(false)
 const colapsado = ref(localStorage.getItem('aft_sidebar') === '1')
 
+// Pie del lateral: avatar con las iniciales, el nombre y el rol como píldora.
+const quienEs = computed(() => user.value?.nombre || user.value?.username || '')
+const iniciales = computed(() => {
+  const partes = quienEs.value.trim().split(/\s+/).filter(Boolean)
+  if (!partes.length) return '·'
+  return partes.slice(0, 2).map((p) => p[0]).join('').toUpperCase()
+})
+const rolEtiqueta = computed(() => {
+  const r = user.value?.rol_accesos
+  if (r) return r.toLowerCase().replace(/\b[a-záéíóúñ]/g, (c) => c.toUpperCase())
+  return user.value?.rol === 'admin' ? 'Administrador' : 'Usuario'
+})
+
 const pageTitle = computed(() => {
   const t = { '/inicio': 'Dashboard', '/activos': 'Inventario', '/utiles': 'Útiles y herramientas', '/responsables': 'Responsables', '/areas': 'Áreas' }
   return t[route.path] || 'AFT Camagüey'
@@ -56,9 +69,14 @@ async function logout() {
           <router-link v-if="user?.rol === 'admin'" to="/areas" class="nav-link" active-class="act" title="Áreas y ubicaciones"><AppIcon name="map-pin" :size="17" /> <span class="nl-txt">Áreas</span></router-link>
         </nav>
         <div class="side-foot">
-          <div class="who">{{ user?.nombre || user?.username }}</div>
-          <div class="role">{{ user?.rol === 'admin' ? 'Administrador' : 'Usuario' }}</div>
-          <button class="btn sec sm" title="Salir" @click="logout"><AppIcon name="log-out" :size="15" /> <span class="nl-txt">Salir</span></button>
+          <div class="who-row">
+            <div class="avatar">{{ iniciales }}</div>
+            <div class="who-txt">
+              <div class="who">{{ quienEs }}</div>
+              <div class="role">{{ rolEtiqueta }}</div>
+            </div>
+            <button class="salir" title="Salir" aria-label="Salir" @click="logout"><AppIcon name="log-out" :size="16" /></button>
+          </div>
         </div>
       </aside>
       <div class="main">
@@ -98,10 +116,26 @@ nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
 .nav-link { color: #cbd5e1; padding: 9px 12px; border-radius: 8px; font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 9px; overflow: hidden; white-space: nowrap; }
 .nav-link:hover { background: rgba(255,255,255,0.06); color: #fff; }
 .nav-link.act { background: var(--primary); color: #fff; }
-.side-foot { border-top: 1px solid rgba(255,255,255,0.1); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
-.side-foot .btn { width: 100%; justify-content: center; }
+.side-foot { border-top: 1px solid rgba(255,255,255,0.1); padding-top: 12px; }
+.who-row { display: flex; align-items: center; gap: 10px; }
+.avatar {
+  flex: none; width: 34px; height: 34px; border-radius: 50%;
+  background: var(--primary); color: #fff; font-size: 13px; font-weight: 800;
+  display: grid; place-items: center;
+}
+.who-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .who { font-weight: 700; font-size: 13px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.role { font-size: 11px; color: #94a3b8; margin-bottom: 8px; }
+.role {
+  align-self: flex-start; max-width: 100%; font-size: 10px; font-weight: 700;
+  color: #bfdbfe; background: rgba(96,165,250,0.18); border-radius: 999px;
+  padding: 1px 8px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+.salir {
+  flex: none; background: none; border: 0; cursor: pointer; color: #94a3b8;
+  padding: 7px; border-radius: 8px; display: flex;
+}
+.salir:hover { color: #fff; background: rgba(255,255,255,0.08); }
+.salir:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
 
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .topbar {
@@ -120,7 +154,8 @@ nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
   .side.collapsed .logo { visibility: hidden; }
   .side.collapsed .nav-link { justify-content: center; padding: 11px 0; }
   .side.collapsed .nl-txt { display: none; }
-  .side.collapsed .who, .side.collapsed .role { display: none; }
+  .side.collapsed .who-txt, .side.collapsed .salir { display: none; }
+  .side.collapsed .who-row { justify-content: center; }
 }
 
 @media (max-width: 820px) {

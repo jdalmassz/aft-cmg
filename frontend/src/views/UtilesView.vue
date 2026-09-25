@@ -14,6 +14,7 @@ import { ref, onMounted, computed } from 'vue'
 import { api, formatMoneda, getUser } from '../api'
 import AppIcon from '../components/AppIcon.vue'
 import Drawer from '../components/Drawer.vue'
+import { usePreviewPdf } from '../previewPdf'
 import { ok, err } from '../toast'
 import { confirmar } from '../confirm'
 
@@ -235,24 +236,44 @@ function abrirExport(formato) {
   exportAbierto.value = true
 }
 
+// Los parámetros y el nombre del fichero salen de aquí, para que la vista previa
+// y la descarga sean exactamente el mismo documento.
+function paramsExport() {
+  const c = exportar_.value
+  const params = new URLSearchParams()
+  if (c.responsable) params.set('custodio', c.responsable)
+  // El único corte que tiene sentido aquí es el responsable: un útil no está en
+  // ninguna parte, está con alguien.
+  if (c.separar) params.set('separar', 'responsable')
+  if (c.formato === 'pdf' && c.numero) params.set('conteo', c.numero)
+  if (c.formato === 'pdf' && c.periodo.trim()) params.set('periodo', c.periodo.trim())
+  return params
+}
+
+function nombreExport() {
+  const c = exportar_.value
+  const quien = c.responsable ? '-' + nome(catalogo.value.custodios, c.responsable).replace(/\s+/g, '_') : ''
+  return 'Utiles-y-herramientas' + quien + '-' + new Date().toISOString().slice(0, 10) + (c.formato === 'pdf' ? '.pdf' : '.xlsx')
+}
+
 async function descargar() {
   exportando.value = true
   try {
-    const c = exportar_.value
-    const pdf = c.formato === 'pdf'
-    const params = new URLSearchParams()
-    if (c.responsable) params.set('custodio', c.responsable)
-    // El único corte que tiene sentido aquí es el responsable: un útil no está en
-    // ninguna parte, está con alguien.
-    if (c.separar) params.set('separar', 'responsable')
-    if (pdf && c.numero) params.set('conteo', c.numero)
-    if (pdf && c.periodo.trim()) params.set('periodo', c.periodo.trim())
-    const qs = params.toString()
-    const quien = c.responsable ? '-' + nome(catalogo.value.custodios, c.responsable).replace(/\s+/g, '_') : ''
-    const nombre = 'Utiles-y-herramientas' + quien + '-' + new Date().toISOString().slice(0, 10) + (pdf ? '.pdf' : '.xlsx')
-    await api.download('/api/utiles/export' + (pdf ? '/pdf' : '') + (qs ? '?' + qs : ''), nombre)
+    const pdf = exportar_.value.formato === 'pdf'
+    const qs = paramsExport().toString()
+    await api.download('/api/utiles/export' + (pdf ? '/pdf' : '') + (qs ? '?' + qs : ''), nombreExport())
     exportAbierto.value = false
   } catch (e) { err(e.message) } finally { exportando.value = false }
+}
+
+// Vista previa: el MISMO PDF que se descargaría. Si sale bien, se cierra el
+// diálogo de opciones y se abre la hoja encima.
+const preview = usePreviewPdf()
+
+async function previsualizar() {
+  const qs = paramsExport().toString()
+  await preview.abrir('/api/utiles/export/pdf' + (qs ? '?' + qs : ''))
+  if (preview.abierta) exportAbierto.value = false
 }
 
 onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
@@ -360,7 +381,7 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
         <div v-else-if="editDrawer" class="form">
           <div class="field"><label>Descripción *</label><input v-model="formulario.descripcion" class="input" /></div>
           <div class="dos">
-            <div class="field"><label>Código</label><input v-model="formulario.codigo" class="input" placeholder="Se pone solo (UH-0001)" /></div>
+            <div class="field"><label>Código</label><input v-model="formulario.codigo" class="input" placeholder="Se pone solo (0001)" /></div>
             <div class="field"><label>Cantidad</label><input v-model="formulario.cantidad" class="input" type="number" min="1" /></div>
           </div>
           <div class="dos">
@@ -413,7 +434,7 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
       <div class="form">
         <div class="field"><label>Descripción *</label><input v-model="formulario.descripcion" class="input" placeholder="Juego de destornilladores" /></div>
         <div class="dos">
-          <div class="field"><label>Código</label><input v-model="formulario.codigo" class="input" placeholder="Se pone solo (UH-0001)" /></div>
+          <div class="field"><label>Código</label><input v-model="formulario.codigo" class="input" placeholder="Se pone solo (0001)" /></div>
           <div class="field"><label>Cantidad</label><input v-model="formulario.cantidad" class="input" type="number" min="1" /></div>
         </div>
         <div class="dos">
@@ -460,7 +481,22 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
       <p class="muted nota">{{ exportar_.formato === 'pdf' ? 'Salen sólo los que están en estado ACTIVO, agrupados por responsable.' : 'Mismas columnas que el inventario, sin ubicación y con la cantidad.' }}</p>
       <template #pie>
         <button class="btn sec" @click="exportAbierto = false">Cancelar</button>
+        <button v-if="exportar_.formato === 'pdf'" class="btn sec" :disabled="preview.cargando || !total" title="Ver la hoja antes de descargarla" @click="previsualizar">
+          <AppIcon name="eye" :size="15" /> {{ preview.cargando ? 'Generando…' : 'Vista previa' }}
+        </button>
         <button class="btn" :disabled="exportando" @click="descargar"><AppIcon name="file" :size="15" /> {{ exportando ? 'Generando…' : 'Descargar' }}</button>
+      </template>
+    </Drawer>
+
+    <Drawer :open="preview.abierta" titulo="Vista previa de la hoja" subtitulo="Tal como se imprimirá" :ancho="860" clase="preview-drawer" @close="preview.cerrar">
+      <div class="preview-caja">
+        <iframe v-if="preview.url" class="preview-iframe" :src="preview.url" title="Vista previa de la hoja de conteo"></iframe>
+        <div v-else class="center"><span class="spinner"></span></div>
+      </div>
+      <template #pie>
+        <button class="btn sec" @click="preview.cerrar">Cerrar</button>
+        <button class="btn sec" :disabled="!preview.url" @click="preview.descargar(nombreExport())"><AppIcon name="file" :size="15" /> Descargar</button>
+        <button class="btn" :disabled="!preview.url" @click="preview.imprimir"><AppIcon name="printer" :size="15" /> Imprimir</button>
       </template>
     </Drawer>
   </div>
@@ -509,6 +545,14 @@ table.tbl .num { text-align: right; font-variant-numeric: tabular-nums; }
 .back { background: none; border: none; cursor: pointer; color: var(--muted); padding: 4px; border-radius: 6px; display: flex; flex-shrink: 0; }
 .back:hover { color: var(--primary); background: #eef4ff; }
 .nota { font-size: 12px; margin-top: 14px; }
+
+/* Vista previa del PDF: la hoja entera, con su fondo gris de papel. */
+.preview-caja {
+  height: calc(100dvh - 210px); min-height: 300px;
+  background: #e2e8f0; border: 1px solid var(--border); border-radius: 10px;
+  overflow: hidden; display: grid; place-items: center;
+}
+.preview-iframe { width: 100%; height: 100%; border: 0; background: #fff; }
 
 .form { display: flex; flex-direction: column; gap: 12px; }
 .dos { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }

@@ -4,6 +4,7 @@ import QRCode from 'qrcode'
 import { api, formatMoneda, getUser } from '../api'
 import AppIcon from '../components/AppIcon.vue'
 import Drawer from '../components/Drawer.vue'
+import { usePreviewPdf } from '../previewPdf'
 import { ok, err } from '../toast'
 import { confirmar } from '../confirm'
 
@@ -250,28 +251,50 @@ function cambiarAreaConteo() {
   if (conteo.value.ubicacion && !ubicacionesConteo.value.some((u) => u.id === Number(conteo.value.ubicacion))) conteo.value.ubicacion = ''
 }
 
+// Los parámetros y el nombre del fichero salen de aquí, para que la vista previa
+// y la descarga sean exactamente el mismo documento.
+function paramsConteo() {
+  const c = conteo.value
+  const pdf = c.formato === 'pdf'
+  const params = new URLSearchParams()
+  if (c.area) params.set('area', c.area)
+  if (c.ubicacion) params.set('ubicacion', c.ubicacion)
+  if (c.responsable) params.set('custodio', c.responsable)
+  if (c.separar) params.set('separar', c.separar)
+  if (pdf && c.numero) params.set('conteo', c.numero)
+  if (pdf && c.periodo.trim()) params.set('periodo', c.periodo.trim())
+  return params
+}
+
+function nombreConteo() {
+  const c = conteo.value
+  const pdf = c.formato === 'pdf'
+  const parte = [
+    c.ubicacion ? nome(catalogo.value.ubicaciones, c.ubicacion) : c.area ? areaDe(c.area) : '',
+    c.responsable ? nome(catalogo.value.custodios, c.responsable) : ''
+  ].filter(Boolean).join('-')
+  return (pdf ? 'Conteo-fisico' : 'AFT-Camaguey') + (parte ? '-' + parte.replace(/\s+/g, '_') : '') + '-' + new Date().toISOString().slice(0, 10) + (pdf ? '.pdf' : '.xlsx')
+}
+
 async function exportar() {
   exportandoPdf.value = true
   try {
-    const c = conteo.value
-    const pdf = c.formato === 'pdf'
-    const params = new URLSearchParams()
-    if (c.area) params.set('area', c.area)
-    if (c.ubicacion) params.set('ubicacion', c.ubicacion)
-    if (c.responsable) params.set('custodio', c.responsable)
-    if (c.separar) params.set('separar', c.separar)
-    if (pdf && c.numero) params.set('conteo', c.numero)
-    if (pdf && c.periodo.trim()) params.set('periodo', c.periodo.trim())
-    const qs = params.toString()
-    const parte = [
-      c.ubicacion ? nome(catalogo.value.ubicaciones, c.ubicacion) : c.area ? areaDe(c.area) : '',
-      c.responsable ? nome(catalogo.value.custodios, c.responsable) : ''
-    ].filter(Boolean).join('-')
-    const nombre = (pdf ? 'Conteo-fisico' : 'AFT-Camaguey') + (parte ? '-' + parte.replace(/\s+/g, '_') : '') + '-' + new Date().toISOString().slice(0, 10) + (pdf ? '.pdf' : '.xlsx')
-    await api.download('/api/activos/export' + (pdf ? '/pdf' : '') + (qs ? '?' + qs : ''), nombre)
+    const pdf = conteo.value.formato === 'pdf'
+    const qs = paramsConteo().toString()
+    await api.download('/api/activos/export' + (pdf ? '/pdf' : '') + (qs ? '?' + qs : ''), nombreConteo())
     ok(pdf ? 'Hoja de conteo físico exportada a PDF' : 'Inventario exportado a Excel')
     conteoAbierto.value = false
   } catch (e) { err(e.message) } finally { exportandoPdf.value = false }
+}
+
+// Vista previa: el MISMO PDF que se descargaría. Si sale bien, se cierra el
+// diálogo de opciones y se abre la hoja encima.
+const preview = usePreviewPdf()
+
+async function previsualizar() {
+  const qs = paramsConteo().toString()
+  await preview.abrir('/api/activos/export/pdf' + (qs ? '?' + qs : ''))
+  if (preview.abierta) conteoAbierto.value = false
 }
 
 async function generarEtiquetas() {
@@ -283,7 +306,7 @@ async function generarEtiquetas() {
     const res = await api.get('/api/activos' + (qs ? '?' + qs + '&' : '?') + 'limite=1000')
     qrTotal.value = res.total
     const imgs = await Promise.all(res.activos.map(async (a) => {
-      const linea = `AFT ${a.codigo || ('ID ' + a.id)}\n${a.descripcion}\n${a.marca || ''} ${a.modelo || ''}`.trim()
+      const linea = `${a.codigo || ('ID ' + a.id)}\n${a.descripcion}\n${a.marca || ''} ${a.modelo || ''}`.trim()
       return { ...a, qr: await QRCode.toDataURL(linea, { margin: 1, width: 320 }) }
     }))
     qrImagenes.value = imgs
@@ -574,7 +597,22 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
       <p class="muted nota">{{ conteo.formato === 'pdf' ? 'Salen sólo los activos en estado ACTIVO, agrupados por área y ubicación.' : 'Mismo formato que «Control de AFT cmg rev01.xlsx».' }}</p>
       <template #pie>
         <button class="btn sec" @click="conteoAbierto = false">Cancelar</button>
+        <button v-if="conteo.formato === 'pdf'" class="btn sec" :disabled="preview.cargando || !total" title="Ver la hoja antes de descargarla" @click="previsualizar">
+          <AppIcon name="eye" :size="15" /> {{ preview.cargando ? 'Generando…' : 'Vista previa' }}
+        </button>
         <button class="btn" :disabled="exportandoPdf" @click="exportar"><AppIcon name="file" :size="15" /> {{ exportandoPdf ? 'Generando…' : (conteo.formato === 'pdf' ? 'Descargar PDF' : 'Descargar Excel') }}</button>
+      </template>
+    </Drawer>
+
+    <Drawer :open="preview.abierta" titulo="Vista previa de la hoja" subtitulo="Tal como se imprimirá" :ancho="860" clase="preview-drawer" @close="preview.cerrar">
+      <div class="preview-caja">
+        <iframe v-if="preview.url" class="preview-iframe" :src="preview.url" title="Vista previa de la hoja de conteo"></iframe>
+        <div v-else class="center"><span class="spinner"></span></div>
+      </div>
+      <template #pie>
+        <button class="btn sec" @click="preview.cerrar">Cerrar</button>
+        <button class="btn sec" :disabled="!preview.url" @click="preview.descargar(nombreConteo())"><AppIcon name="file" :size="15" /> Descargar</button>
+        <button class="btn" :disabled="!preview.url" @click="preview.imprimir"><AppIcon name="printer" :size="15" /> Imprimir</button>
       </template>
     </Drawer>
 
@@ -648,6 +686,14 @@ table.tbl.compact th, table.tbl.compact td { padding: 5px 9px; font-size: 12.5px
 .back { background: none; border: none; cursor: pointer; color: var(--muted); padding: 4px; border-radius: 6px; display: flex; flex-shrink: 0; }
 .back:hover { color: var(--primary); background: #eef4ff; }
 .nota { font-size: 12px; margin-top: 14px; }
+
+/* Vista previa del PDF: la hoja entera, con su fondo gris de papel. */
+.preview-caja {
+  height: calc(100dvh - 210px); min-height: 300px;
+  background: #e2e8f0; border: 1px solid var(--border); border-radius: 10px;
+  overflow: hidden; display: grid; place-items: center;
+}
+.preview-iframe { width: 100%; height: 100%; border: 0; background: #fff; }
 .formato { display: flex; gap: 6px; margin-bottom: 14px; }
 .formato .btn { flex: 1; justify-content: center; }
 
