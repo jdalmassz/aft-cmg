@@ -3,10 +3,20 @@ const ExcelJS = require('exceljs');
 const { registerMovimiento } = require('./movimientos');
 const { ACTIVOS_COLUMNS, ACTIVOS_FROM, AREA_ETIQUETA, buildWhere } = require('./activos-query');
 
+/**
+ * De qué inventario va esta petición: activos fijos o útiles y herramientas.
+ *
+ * Lo pone la ruta (`/activos` o `/utiles`), no quien llama: así una pantalla no puede
+ * pedir unos y escribir en los otros. Sin ruta que lo diga, activos fijos, que es lo que
+ * había antes de que esto existiera.
+ */
+const tipoDe = (req) => (req.tipoActivo === 'UTIL' ? 'UTIL' : 'AFT');
+const esUtil = (req) => tipoDe(req) === 'UTIL';
+
 async function listActivos(req, res, next) {
   try {
     const { q, categoria, area, ubicacion, custodio, marca, estado, limite = 200, offset = 0 } = req.query;
-    const from = buildWhere({ q, categoria, area, ubicacion, custodio, marca, estado });
+    const from = buildWhere({ q, categoria, area, ubicacion, custodio, marca, estado, tipo: tipoDe(req) });
     const total = await db.getPool().query(`SELECT COUNT(*)::int AS n ${ACTIVOS_FROM} ${from.sql}`, from.params);
     const rows = await db.getPool().query(
       `SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} ${from.sql} ORDER BY a.id DESC LIMIT ${from.p(limite)} OFFSET ${from.p(offset)}`,
@@ -37,6 +47,29 @@ const EXPORT_COLS = [
   { header: 'Comentarios', key: 'comentarios', width: 34.88671875 }
 ];
 
+/**
+ * Las de un útil: sin ubicación —no tiene— y CON cantidad, que es lo que se cuenta.
+ *
+ * El resto se deja en el mismo orden que el original de activos fijos a propósito: quien
+ * revisa las dos hojas el mismo día no tiene que aprenderse dos sitios para cada dato.
+ */
+const EXPORT_COLS_UTIL = [
+  { header: 'Codigo', key: 'codigo', width: undefined },
+  { header: 'Descripcion', key: 'descripcion', width: 65.6640625 },
+  { header: 'Marca', key: 'marca', width: 19.6640625 },
+  { header: 'Modelo', key: 'modelo', width: 20 },
+  { header: 'Cantidad', key: 'cantidad', width: 11 },
+  { header: 'Valor CUP', key: 'valor_cup', width: 11.5546875, numFmt: MONEY_FMT, hidden: true },
+  { header: 'Categoria', key: 'categoria', width: 3.109375, hidden: true },
+  { header: 'Sucursal', key: 'sucursal', width: 13.109375 },
+  { header: 'Fecha de Adquisicion', key: 'fecha_adquisicion', width: 20.5546875, numFmt: FECHA_FMT },
+  { header: 'Responsable', key: 'custodio', width: 35.33203125 },
+  { header: 'Valor USD', key: 'valor_usd', width: 25.77734375, numFmt: MONEY_FMT },
+  { header: 'Comentarios', key: 'comentarios', width: 34.88671875 }
+];
+
+const columnasDe = (util) => (util ? EXPORT_COLS_UTIL : EXPORT_COLS);
+
 function styleHeaderRow(row) {
   row.eachCell((cell) => {
     cell.font = { ...ORIGINAL_HEADER_FONT };
@@ -44,27 +77,29 @@ function styleHeaderRow(row) {
   });
 }
 
-const valoresFila = (a) => [
+const valoresFila = (a, util) => [
   a.codigo ?? null,
   a.descripcion ?? null,
   a.marca ?? null,
   a.modelo ?? null,
+  ...(util ? [a.cantidad == null ? null : Number(a.cantidad)] : []),
   a.valor_cup == null ? null : Number(a.valor_cup),
   a.categoria ?? null,
   a.sucursal ?? null,
   a.fecha_adquisicion ?? null,
-  a.ubicacion ?? null,
+  ...(util ? [] : [a.ubicacion ?? null]),
   a.custodio ?? null,
   a.valor_usd == null ? null : Number(a.valor_usd),
   a.comentarios ?? null
 ];
 
-function writeActivosSheet(wb, activos, { hoja = 'Activos', tabla = 'Tabla1' } = {}) {
-  const ws = wb.addWorksheet(hoja, {
+function writeActivosSheet(wb, activos, { hoja, tabla = 'Tabla1', util = false } = {}) {
+  const cols = columnasDe(util);
+  const ws = wb.addWorksheet(hoja || (util ? 'Utiles' : 'Activos'), {
     views: [{ showGridLines: false, zoomScale: 110, zoomScaleNormal: 110 }]
   });
 
-  EXPORT_COLS.forEach((c, i) => {
+  cols.forEach((c, i) => {
     const col = ws.getColumn(i + 1);
     if (c.width !== undefined) col.width = c.width;
     if (c.hidden) col.hidden = true;
@@ -78,17 +113,17 @@ function writeActivosSheet(wb, activos, { hoja = 'Activos', tabla = 'Tabla1' } =
       ref: 'A1',
       headerRow: true,
       style: { theme: 'TableStyleLight13', showRowStripes: true },
-      columns: EXPORT_COLS.map((c) => ({ name: c.header, filterButton: true })),
-      rows: activos.map(valoresFila)
+      columns: cols.map((c) => ({ name: c.header, filterButton: true })),
+      rows: activos.map((a) => valoresFila(a, util))
     });
   } else {
-    ws.getRow(1).values = EXPORT_COLS.map((c) => c.header);
+    ws.getRow(1).values = cols.map((c) => c.header);
   }
 
   styleHeaderRow(ws.getRow(1));
   for (let r = 2; r <= activos.length + 1; r++) {
     const row = ws.getRow(r);
-    EXPORT_COLS.forEach((def, i) => {
+    cols.forEach((def, i) => {
       const cell = row.getCell(i + 1);
       cell.font = { ...ORIGINAL_FONT };
       if (def.numFmt) cell.numFmt = def.numFmt;
@@ -132,10 +167,15 @@ function nombreHoja(nombre, wb) {
 async function exportActivos(req, res, next) {
   try {
     const { q, categoria, area, ubicacion, custodio, marca, estado } = req.query;
-    const from = buildWhere({ q, categoria, area, ubicacion, custodio, marca, estado });
+    const util = esUtil(req);
+    const from = buildWhere({ q, categoria, area, ubicacion, custodio, marca, estado, tipo: tipoDe(req) });
     // '1' / 'ubicacion': una hoja por ubicación · 'responsable': una hoja por responsable
-    const separar = req.query.separar === 'responsable' ? 'responsable'
-      : (req.query.separar === '1' || req.query.separar === 'ubicacion') ? 'ubicacion' : '';
+    // Un útil no tiene ubicación, así que el único corte que existe es el responsable:
+    // pedir «separar por ubicación» ahí sería una hoja «Sin ubicación» con todo dentro.
+    const separar = util
+      ? (req.query.separar ? 'responsable' : '')
+      : req.query.separar === 'responsable' ? 'responsable'
+        : (req.query.separar === '1' || req.query.separar === 'ubicacion') ? 'ubicacion' : '';
     const [rows, cats] = await Promise.all([
       db.getPool().query(
         `SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} ${from.sql}
@@ -160,17 +200,17 @@ async function exportActivos(req, res, next) {
         const nombre = separar === 'responsable'
           ? (a.custodio || 'Sin responsable')
           : `${a.area_numero != null ? 'A' + a.area_numero + ' ' : ''}${a.ubicacion || 'Sin ubicación'}`;
-        writeActivosSheet(wb, items, { hoja: nombreHoja(nombre, wb), tabla: `Tabla${n}` });
+        writeActivosSheet(wb, items, { hoja: nombreHoja(nombre, wb), tabla: `Tabla${n}`, util });
       }
-      if (!n) writeActivosSheet(wb, []);
+      if (!n) writeActivosSheet(wb, [], { util });
     } else {
-      writeActivosSheet(wb, rows.rows);
+      writeActivosSheet(wb, rows.rows, { util });
     }
     writeCategoriaSheet(wb, cats.rows);
 
     const fecha = new Date().toISOString().slice(0, 10);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="Control de AFT cmg-${fecha}.xlsx"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${util ? 'Utiles y herramientas cmg' : 'Control de AFT cmg'}-${fecha}.xlsx"`);
     await wb.xlsx.write(res);
     res.end();
   } catch (e) { next(e); }
@@ -178,8 +218,12 @@ async function exportActivos(req, res, next) {
 
 async function getActivo(req, res, next) {
   try {
-    const r = await db.getPool().query(`SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} WHERE a.id = $1`, [req.params.id]);
-    if (r.rowCount === 0) return res.status(404).json({ error: 'Activo no encontrado' });
+    // Con el tipo: entrando por `/utiles/7` no se puede leer el activo fijo 7.
+    const r = await db.getPool().query(
+      `SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} WHERE a.id = $1 AND a.tipo = $2`,
+      [req.params.id, tipoDe(req)]
+    );
+    if (r.rowCount === 0) return res.status(404).json({ error: 'No encontrado' });
     return res.json(r.rows[0]);
   } catch (e) { next(e); }
 }
@@ -191,20 +235,32 @@ async function createActivo(req, res, next) {
     for (const f of needed) {
       if (!b[f]) return res.status(400).json({ error: `Campo requerido: ${f}` });
     }
-    const keys = ['codigo', 'descripcion', 'marca_id', 'modelo', 'valor_cup', 'valor_usd', 'categoria_id', 'sucursal_id', 'fecha_adquisicion', 'ubicacion_id', 'custodio_id', 'estado', 'comentarios'];
-    const values = keys.map((k) => b[k] ?? (k === 'estado' ? 'ACTIVO' : null));
+    const util = esUtil(req);
+    const keys = ['codigo', 'descripcion', 'marca_id', 'modelo', 'valor_cup', 'valor_usd', 'categoria_id', 'sucursal_id', 'fecha_adquisicion', 'ubicacion_id', 'custodio_id', 'estado', 'comentarios', 'tipo', 'cantidad'];
+    const values = keys.map((k) => {
+      if (k === 'tipo') return tipoDe(req);
+      if (k === 'cantidad') return Number(b.cantidad) > 0 ? Math.trunc(Number(b.cantidad)) : 1;
+      // Un útil NO tiene ubicación: va con la persona. Si llega una, se ignora en vez de
+      // guardarla a medias, que es lo que haría que un día apareciera en el conteo de un área.
+      if (k === 'ubicacion_id' && util) return null;
+      return b[k] ?? (k === 'estado' ? 'ACTIVO' : null);
+    });
     const r = await db.getPool().query(
       `INSERT INTO activos (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING id`,
       values
     );
     const nuevoId = r.rows[0].id;
     if (!values[keys.indexOf('codigo')]) {
-      await db.getPool().query(`UPDATE activos SET codigo = 'AFT-' || LPAD($1::text, 4, '0') WHERE id = $1`, [nuevoId]);
+      // El prefijo dice de qué inventario es, que es lo primero que se busca en una hoja.
+      await db.getPool().query(
+        `UPDATE activos SET codigo = $2 || LPAD($1::text, 4, '0') WHERE id = $1`,
+        [nuevoId, util ? 'UH-' : 'AFT-']
+      );
     }
     await registerMovimiento(db.getPool(), {
       activo_id: nuevoId,
       tipo: 'CREADO',
-      ubicacion_destino_id: b.ubicacion_id || null,
+      ubicacion_destino_id: util ? null : (b.ubicacion_id || null),
       custodio_destino_id: b.custodio_id || null,
       estado_destino: b.estado || 'ACTIVO',
       usuario_id: req.user?.id || null
@@ -217,7 +273,9 @@ async function createActivo(req, res, next) {
 async function updateActivo(req, res, next) {
   try {
     const b = req.body;
-    const allowed = ['codigo', 'descripcion', 'marca_id', 'modelo', 'valor_cup', 'valor_usd', 'categoria_id', 'sucursal_id', 'fecha_adquisicion', 'ubicacion_id', 'custodio_id', 'estado', 'comentarios'];
+    // `tipo` NO se puede cambiar: un activo fijo no se convierte en un útil por editarlo.
+    const allowed = ['codigo', 'descripcion', 'marca_id', 'modelo', 'valor_cup', 'valor_usd', 'categoria_id', 'sucursal_id', 'fecha_adquisicion', 'custodio_id', 'estado', 'comentarios', 'cantidad']
+      .concat(esUtil(req) ? [] : ['ubicacion_id']);
     const sets = [];
     const params = [];
     const p = (v) => { params.push(v); return `$${params.length}`; };
@@ -229,11 +287,14 @@ async function updateActivo(req, res, next) {
     sets.push(`updated_at = now()`);
     params.push(req.params.id);
 
-    const prev = await db.getPool().query('SELECT id, ubicacion_id, custodio_id, estado FROM activos WHERE id = $1', [req.params.id]);
-    if (prev.rowCount === 0) return res.status(404).json({ error: 'Activo no encontrado' });
+    const prev = await db.getPool().query(
+      'SELECT id, ubicacion_id, custodio_id, estado FROM activos WHERE id = $1 AND tipo = $2',
+      [req.params.id, tipoDe(req)]
+    );
+    if (prev.rowCount === 0) return res.status(404).json({ error: 'No encontrado' });
 
     const upd = await db.getPool().query(`UPDATE activos SET ${sets.join(', ')} WHERE id = $${params.length}`, params);
-    if (upd.rowCount === 0) return res.status(404).json({ error: 'Activo no encontrado' });
+    if (upd.rowCount === 0) return res.status(404).json({ error: 'No encontrado' });
 
     const old = prev.rows[0];
     const novo = {
@@ -259,8 +320,11 @@ async function updateActivo(req, res, next) {
 
 async function deleteActivo(req, res, next) {
   try {
-    const r = await db.getPool().query('DELETE FROM activos WHERE id = $1 RETURNING id', [req.params.id]);
-    if (r.rowCount === 0) return res.status(404).json({ error: 'Activo no encontrado' });
+    const r = await db.getPool().query(
+      'DELETE FROM activos WHERE id = $1 AND tipo = $2 RETURNING id',
+      [req.params.id, tipoDe(req)]
+    );
+    if (r.rowCount === 0) return res.status(404).json({ error: 'No encontrado' });
     return res.json({ ok: true });
   } catch (e) { next(e); }
 }
@@ -289,23 +353,34 @@ async function catalogo(req, res, next) {
 async function dashboard(req, res, next) {
   try {
     const dbp = db.getPool();
-    const [total, porCategoria, porUbicacion, porEstado, valores, recientes, custodiosTop] = await Promise.all([
-      dbp.query('SELECT COUNT(*)::int AS total FROM activos'),
+    // EL PANEL ES EL DE LOS ACTIVOS FIJOS. Desde que los útiles viven en la misma
+    // tabla, cada cuenta de aquí lleva su `tipo = 'AFT'`: sin eso, el total de activos
+    // fijos subiría con cada martillo que alguien diera de alta. Los útiles se cuentan
+    // aparte, en su propia cifra.
+    const [total, porCategoria, porUbicacion, porEstado, valores, recientes, custodiosTop, utiles] = await Promise.all([
+      dbp.query("SELECT COUNT(*)::int AS total FROM activos WHERE tipo = 'AFT'"),
       dbp.query(`
         SELECT c.nombre, COUNT(a.id)::int AS cantidad
-        FROM categorias c LEFT JOIN activos a ON a.categoria_id = c.id
+        FROM categorias c LEFT JOIN activos a ON a.categoria_id = c.id AND a.tipo = 'AFT'
         GROUP BY c.id, c.nombre ORDER BY cantidad DESC`),
       dbp.query(`
         SELECT u.nombre, COUNT(a.id)::int AS cantidad
-        FROM ubicaciones u LEFT JOIN activos a ON a.ubicacion_id = u.id AND a.estado = 'ACTIVO'
+        FROM ubicaciones u LEFT JOIN activos a ON a.ubicacion_id = u.id AND a.estado = 'ACTIVO' AND a.tipo = 'AFT'
         GROUP BY u.id, u.nombre ORDER BY u.nombre`),
-      dbp.query('SELECT estado, COUNT(*)::int AS cantidad FROM activos GROUP BY estado'),
-      dbp.query('SELECT COALESCE(SUM(valor_usd),0)::numeric AS valor_usd, COALESCE(SUM(valor_cup),0)::numeric AS valor_cup FROM activos WHERE estado = $1', ['ACTIVO']),
-      dbp.query(`SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} ORDER BY a.created_at DESC LIMIT 5`),
+      dbp.query("SELECT estado, COUNT(*)::int AS cantidad FROM activos WHERE tipo = 'AFT' GROUP BY estado"),
+      dbp.query("SELECT COALESCE(SUM(valor_usd),0)::numeric AS valor_usd, COALESCE(SUM(valor_cup),0)::numeric AS valor_cup FROM activos WHERE estado = $1 AND tipo = 'AFT'", ['ACTIVO']),
+      dbp.query(`SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} WHERE a.tipo = 'AFT' ORDER BY a.created_at DESC LIMIT 5`),
       dbp.query(`
         SELECT cu.nombre, COUNT(a.id)::int AS cantidad
-        FROM custodios cu JOIN activos a ON a.custodio_id = cu.id
-        GROUP BY cu.id, cu.nombre ORDER BY cantidad DESC LIMIT 10`)
+        FROM custodios cu JOIN activos a ON a.custodio_id = cu.id AND a.tipo = 'AFT'
+        GROUP BY cu.id, cu.nombre ORDER BY cantidad DESC LIMIT 10`),
+      // Los útiles: cuántas líneas, cuántas piezas y cuántos responsables los tienen.
+      dbp.query(`
+        SELECT COUNT(*)::int AS lineas,
+               COALESCE(SUM(cantidad), 0)::int AS piezas,
+               COUNT(DISTINCT custodio_id)::int AS responsables,
+               COUNT(*) FILTER (WHERE custodio_id IS NULL)::int AS sin_responsable
+        FROM activos WHERE tipo = 'UTIL'`)
     ]);
     return res.json({
       total: total.rows[0].total,
@@ -314,7 +389,8 @@ async function dashboard(req, res, next) {
       porEstado: porEstado.rows,
       valores: valores.rows[0],
       recientes: recientes.rows,
-      custodiosTop: custodiosTop.rows
+      custodiosTop: custodiosTop.rows,
+      utiles: utiles.rows[0]
     });
   } catch (e) { next(e); }
 }
