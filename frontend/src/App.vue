@@ -41,7 +41,10 @@ async function logout() {
   // La cookie httpOnly la borra el servidor (el frontend no puede tocarla);
   // la sesión local también se limpia aquí por si el token ya había expirado.
   try { await doLogout() } catch { clearSession() }
-  router.push('/login')
+  // La puerta de entrada es Accesos, así que la de salida también: fuera de
+  // aquí, a su pantalla. Se navega con window.location (y no con el router)
+  // para que el cambio de origen sea de verdad.
+  window.location.href = 'https://auth.procovar.cloud/'
 }
 </script>
 
