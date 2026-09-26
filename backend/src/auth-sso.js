@@ -18,9 +18,12 @@ function cookieOpts(req) {
   };
 }
 
-async function fetchAuth(path, body) {
+// `firmada: false` sólo para /api/auth/token, que es el único que contesta con
+// las credenciales en la mano y no pide firma; el resto la exige.
+async function fetchAuth(path, body, opts) {
+  const firmada = !opts || opts.firmada !== false;
   const bodyStr = JSON.stringify(body || {});
-  const headers = sso.headersFirma('POST', path, bodyStr);
+  const headers = firmada ? sso.headersFirma('POST', path, bodyStr) : { 'Content-Type': 'application/json' };
   const res = await fetch(`${sso.AUTH_URL}${path}`, {
     method: 'POST',
     headers,
@@ -78,6 +81,18 @@ async function upsertUser(pool, accUser, rolInterno, sucursal, rolAccesos) {
   return r.rows[0];
 }
 
+// De la persona de Accesos a la nuestra: rol de Accesos, sucursal y rol
+// interno. Es el MISMO cálculo para el callback SSO y para la entrada directa
+// con contraseña (auth-accesos.js), porque la traducción tiene que seguir
+// estando en un solo sitio.
+function datosDeEntrada(user, memberships) {
+  const membresia = Array.isArray(memberships) && memberships.length ? memberships[0] : null;
+  const roles = (membresia && membresia.roles) || [];
+  const rolAccesos = sso.normalizaRol(roles[0]);
+  const sucursal = sso.sucursalDesdeMemberships(memberships);
+  return { rolAccesos, sucursal, rol: sso.rolInterno(rolAccesos) };
+}
+
 // 1. Pedir la ida a Accesos.
 async function entrar(req, res) {
   if (!sso.loginUnicoDisponible()) {
@@ -113,11 +128,7 @@ async function callback(req, res) {
 
     // Accesos devuelve las membresías de la más reciente a la más antigua y
     // nos quedamos con la primera: sucursal y rol salen de esa misma.
-    const membresia = Array.isArray(memberships) && memberships.length ? memberships[0] : null;
-    const roles = (membresia && membresia.roles) || [];
-    const rolAccesos = sso.normalizaRol(roles[0]);
-    const sucursal = sso.sucursalDesdeMemberships(memberships);
-    const rol = sso.rolInterno(rolAccesos);
+    const { rolAccesos, sucursal, rol } = datosDeEntrada(user, memberships);
 
     // Un solo INSERT o UPDATE: no hace falta transacción (y con pool hay que
     // evitar BEGIN/COMMIT sobre clientes distintos).
@@ -131,7 +142,7 @@ async function callback(req, res) {
     );
     // TEMPORAL: la forma real de memberships/roles que devuelve Accesos en
     // producción. Borrar esta línea en cuanto se lea el registro.
-    console.log(`SSO crudo: ${JSON.stringify({ memberships, roles })}`);
+    console.log(`SSO crudo: ${JSON.stringify({ memberships })}`);
 
     const token = sign(localUser);
     res.cookie(sso.SSO_COOKIE, token, cookieOpts(req));
@@ -148,4 +159,4 @@ async function callback(req, res) {
   }
 }
 
-module.exports = { entrar, callback };
+module.exports = { entrar, callback, fetchAuth, upsertUser, cookieOpts, datosDeEntrada };

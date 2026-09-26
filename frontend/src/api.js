@@ -68,7 +68,9 @@ const api = {
   }
 }
 
-const login = (username, password) => api.post('/auth/login', { username, password })
+// Accesos: correo y contraseña de la cuenta única de Procovar, contra
+// https://auth.procovar.cloud desde el servidor. No hay login propio.
+const login = (email, password) => api.post('/api/auth/login', { email, password })
 const fetchMe = () => api.get('/api/me').then((data) => {
   // El token del SSO vive en cookie httpOnly (no visible para JS); aquí solo
   // guardamos quién es, para que el router no tenga que preguntar cada vez.

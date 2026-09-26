@@ -5,6 +5,7 @@ const express = require('express');
 const db = require('./db');
 const auth = require('./auth');
 const authSso = require('./auth-sso');
+const authAccesos = require('./auth-accesos');
 const authLogout = require('./auth-logout');
 const users = require('./users');
 const usersAdmin = require('./users-admin');
@@ -56,6 +57,10 @@ async function bootstrap() {
   // Sin token: lo único que hace es borrar la cookie httpOnly, y tiene que
   // funcionar también cuando la sesión ya expiró (si no, la cookie se queda).
   app.post('/api/auth/logout', authLogout.logout);
+  // La entrada de verdad: correo y contraseña de Accesos, en nuestra pantalla.
+  app.post('/api/auth/login', authAccesos.loginAccesos);
+  // El login local de respaldo sigue montado (no se borró: si hay que volver
+  // atrás, sólo hay que apuntar la pantalla a esta ruta).
   app.post('/auth/login', users.login);
 
   const api = express.Router();
