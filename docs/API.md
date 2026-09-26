@@ -8,67 +8,35 @@ correspondiente.
 
 ## Autenticación
 
-La entrada normal es con el **correo y la contraseña de Accesos**
-(`auth.procovar.cloud`), escritos en nuestra propia pantalla: no se sale de la
-página. Por dentro la contraseña va al servidor, éste la valida en Accesos y
-devuelve **nuestro** token (mismas cuentas, mismos roles, misma sucursal que en
-el flujo de redirect).
+La única puerta de la pantalla de login es **Accesos**
+(`auth.procovar.cloud`): la app redirige hacia allí y recibe a la persona de
+vuelta con un código de un solo uso (60 s). **No hay usuario ni contraseña
+propios.** El **login local** (`/auth/login`) sigue montado como respaldo,
+sin pantalla propia.
 
-Quedan montadas, sin pantalla propia, dos vías de reserva: el **flujo de
-redirect** (`/api/auth/entrar` → Accesos → callback) y el **login local**
-(`/auth/login`), por si hay que volver atrás.
-
-### Entrar (la pantalla de login)
-
-| Endpoint | Método | Descripción |
-|---|---|---|
-| `/api/auth/login` | POST | `{ email, password }` de Accesos → `{ token, user }`. Pone además la cookie `httpOnly` `aft_sso` |
-| `/auth/login` | POST | Login local de respaldo `{ username, password }` (ya no tiene pantalla) |
-| `/api/auth/logout` | POST | Borra la cookie httpOnly. **No exige token**: tiene que funcionar también con la sesión ya caducada |
-
-Errores: `401` con «Correo o contraseña incorrectos» (Accesos no dice cuál de
-los dos falla, y aquí tampoco), `400` si faltan los dos campos, `502` si Accesos
-no contesta o su respuesta no se reconoce (el detalle entero va al registro).
-
-### Flujo de redirect (reserva)
+### Entrar por Accesos
 
 | Endpoint | Método | Descripción |
 |---|---|---|
 | `/api/auth/entrar?returnTo=/activos` | GET (o POST) | Redirige a Accesos. `returnTo` es opcional y **se valida contra el propio origen** |
 | `/api/auth/sso/callback?code=…` | GET | Vuelve de Accesos con el código (60 s, un solo uso) y canjea el token |
+| `/auth/login` | POST | Login local de respaldo `{ username, password }` |
+| `/api/auth/logout` | POST | Borra la cookie httpOnly. **No exige token**: tiene que funcionar también con la sesión ya caducada |
 
 Tras el callback la sesión viaja en una **cookie `httpOnly`** (`aft_sso`), no en
 `localStorage`: el callback es servidor y esa es la única forma de escribirla.
-Las peticiones pueden llevar el token igual en `Authorization: Bearer <jwt>`,
-que es como trabaja el frontend con el token del login.
+Las peticiones pueden llevar el token igual en `Authorization: Bearer <jwt>`, que
+es como funciona el login local.
 
 Códigos de error en la URL (el motivo entero va al registro del servidor):
 
 | Query | Significado |
 |---|---|
-| `?sso=nodisponible` | Falta `AFT_AUTH_SIGNING_KEY`; la ida por redirect no está disponible |
+| `?sso=nodisponible` | Falta `AFT_AUTH_SIGNING_KEY`; la pantalla avisa y el respaldo es `/auth/login` |
 | `?sso=sincodigo` | Vino al callback sin `?code=` |
 | `?sso=error` | Falló la ida o el canje (firma, `callbackUrl` no dada de alta, código caducado/reutilizado) |
 
-### `POST /api/auth/login`
-
-Cuerpo:
-```json
-{ "email": "junior@procovar.com", "password": "…" }
-```
-
-Respuesta `200` (el `user` es el mismo que devuelve `/api/me`):
-```json
-{
-  "token": "<jwt>",
-  "user": { "id": "...", "username": "junior@procovar.com", "nombre": "JUNIOR",
-            "rol": "usuario", "activo": true, "sucursal": "CAM",
-            "sucursalNombre": "Camagüey", "rol_accesos": "ADMINISTRADOR",
-            "sinDatos": false }
-}
-```
-
-### `POST /auth/login` (reserva)
+### `POST /auth/login` (respaldo, sin pantalla)
 
 Cuerpo:
 ```json

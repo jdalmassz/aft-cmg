@@ -31,7 +31,10 @@ router.beforeEach(async (to) => {
     try {
       await fetchMe()
     } catch {
-      return { path: '/login', query: { redirect: to.fullPath } }
+      // El motivo del fallo de Accesos llega como ?sso=… en la URL de origen:
+      // si se descartara aquí, quien entra se quedaría en la pantalla de login
+      // sin ninguna pista de lo que ha pasado.
+      return { path: '/login', query: { ...to.query, redirect: to.fullPath } }
     }
   }
   if (to.meta.admin && getUser()?.rol !== 'admin') return { path: '/inicio' }

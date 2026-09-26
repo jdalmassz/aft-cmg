@@ -37,8 +37,8 @@ TRUST_PROXY=1
 
 # Accesos (SSO) — https://auth.procovar.cloud
 # AFT_AUTH_SIGNING_KEY: la clave hex que Jose te dé (procovar/.secretos).
-# Se lee en HEXADECIMAL, no como texto plano. Sin ella, la ida por redirect cae
-# a ?sso=nodisponible; la pantalla de login la necesita para /api/auth/verify.
+# Se lee en HEXADECIMAL, no como texto plano. Sin ella, el login SSO cae a
+# ?sso=nodisponible y el usuario entra por el login local de abajo.
 AFT_AUTH_URL=https://auth.procovar.cloud
 AFT_AUTH_CLIENT_ID=aft
 AFT_AUTH_SIGNING_KEY=<clave-hex>
@@ -58,12 +58,11 @@ El alta de la aplicación la hace Jose, y de ahí salen dos cosas:
 | `signingKey` | La clave hex; va en `AFT_AUTH_SIGNING_KEY`. **No va en el repo** |
 | `allowedCallbackUrls` | Tiene que incluir, **letra a letra**: `https://aft.procovar.cloud/api/auth/sso/callback` y para local `http://localhost:8080/api/auth/sso/callback` (o `http://localhost:5173/api/auth/sso/callback` si trabajas con Vite) |
 
-Sin la clave, la ida por redirect cae en `/?sso=nodisponible`. La pantalla de
-login (correo y contraseña de Accesos) la necesita sólo si `/api/auth/token` no
-devuelve a la persona y hay que llamar firmado a `/api/auth/verify`. Con la
-clave puesta, el paso 1 del documento (`callback-token`) tiene que contestar
-`200`; un `401` casi siempre es la clave leída como texto en vez de
-hexadecimal, o el reloj del servidor corrido.
+Sin la clave, la app no falla: entra por `/?sso=nodisponible` y la pantalla
+avisa. El endpoint `/auth/login` (login local) sigue ahí por si hay que volver
+atrás, pero ya no tiene pantalla. Con la clave puesta, el paso 1 del documento
+(`callback-token`) tiene que contestar `200`; un `401` casi siempre es la clave
+leída como texto en vez de hexadecimal, o el reloj del servidor corrido.
 
 ## Notas
 

@@ -9,10 +9,10 @@ Procovar-camaguey) con PostgreSQL 16.
 
 ## Funcionalidades
 
-- **Entrada con correo y contraseña de Accesos** (`auth.procovar.cloud`)
-  escritos en la pantalla de login de la app: **no se sale de la página** y no
-  hay login propio. El flujo de redirect y el login local quedan de respaldo,
-  sin pantalla propia.
+- **Entrada por Accesos** (`auth.procovar.cloud`, el SSO de Procovar): la
+  pantalla de login sólo redirige hacia allí; la aplicación no tiene usuario ni
+  contraseña propios. El login local queda como endpoint de respaldo, sin
+  pantalla.
 - **Alcance por sucursal**: cada sucursal sólo ve sus datos (activos,
   dashboard, historial y exportaciones). Aquí sólo hay datos de **Camagüey**.
 - Gestión de usuarios locales (admin) con sucursal.
@@ -104,18 +104,16 @@ de los 57 activos se aplica una sola vez (controlado en `schema_seeds`).
 | `AFT_AUTH_CLIENT_ID` | `clientId` de tu alta en Accesos | `aft` |
 | `AFT_AUTH_SIGNING_KEY` | Clave hex del alta, leída en **hexadecimal** | — (**sin default**) |
 
-## Entrada (Accesos)
+## Entrada por Accesos
 
-La puerta normal es la pantalla de login: correo y contraseña de Accesos,
-validados en el servidor contra `auth.procovar.cloud`, que devuelve **nuestro**
-token. El flujo de redirect y el login local siguen montados como reserva.
+La única puerta de la pantalla de login es **Accesos**; el login local sigue
+como endpoint de respaldo, sin pantalla propia.
 
 ```bash
-POST /api/auth/login                   # { email, password } de Accesos → { token, user }
-POST /auth/login                       # reserva, login local
-GET  /api/auth/entrar?returnTo=/activos   # reserva: → auth.procovar.cloud
-GET  /api/auth/sso/callback?code=…        # reserva: canjea el código y pone la cookie
-POST /api/auth/logout                  # borra la cookie httpOnly (sin exigir token)
+GET /api/auth/entrar?returnTo=/activos   # → redirige a auth.procovar.cloud
+GET /api/auth/sso/callback?code=…            # → canjea el código y pone la cookie
+POST /auth/login                         # respaldo, si falta la clave
+POST /api/auth/logout                    # borra la cookie httpOnly (sin exigir token)
 ```
 
 - **No se puede registrar nada en Accesos desde aquí: sólo se consume su API.**
@@ -125,10 +123,8 @@ POST /api/auth/logout                  # borra la cookie httpOnly (sin exigir to
   `http://localhost:8080/api/auth/sso/callback` (o `:5173` si usas Vite).
 - La clave **no va en el repo ni en un fichero**: en Dokploy es variable de
   entorno, y en local va en `backend/.env` (ignorado por git).
-- Sin clave de firma sólo se cae el flujo de redirect: `/api/auth/entrar` manda
-  a `/?sso=nodisponible`. La pantalla de login necesita la clave cuando Accesos
-  no devuelve a la persona en `/api/auth/token` y hay que llamar firmado a
-  `/api/auth/verify`.
+- Sin clave no se revienta: `/api/auth/entrar` manda a `/?sso=nodisponible` y
+  se entra con usuario y contraseña.
 - Los roles y las sucursales se traducen **en un solo sitio**,
   `backend/src/procovar-auth.js`. Los siete roles de Accesos: `DESARROLLADOR` y
   `SUPER ADMIN` ven las ocho sucursales; los otros cinco, sólo la suya; un rol
