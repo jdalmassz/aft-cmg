@@ -42,14 +42,19 @@ async function logout() {
   // La cookie httpOnly la borra el servidor (el frontend no puede tocarla);
   // la sesión local también se limpia aquí por si el token ya había expirado.
   try { await doLogout() } catch { clearSession() }
-  // La puerta de salida es la misma que la de entrada: `/logout` de Accesos es
-  // su pantalla de «cerrar sesión global en todas las apps», así que quien salga
-  // de aquí no se queda logueado en auth y puede volver a entrar cuando quiera.
-  // Si se mandara a `https://auth.procovar.cloud/` a secas, la persona seguiría
-  // con sesión allí y el siguiente entrar no le pediría contraseña.
-  // Se navega con window.location (y no con el router) porque esto cambia de
-  // origen de verdad.
-  window.location.href = `${ACCESOS_URL}/logout`
+  // La puerta de salida es la misma que la de entrada. `/logout` de Accesos es
+  // su pantalla de «cerrar sesión global en todas las apps»: al confirmar,
+  // cierra la sesión allí (para no seguir logueado en auth) y devuelve la
+  // persona a nuestra `/inicio`, de donde el guard la manda a `/login` →
+  // `entrar` → pantalla de Accesos → y vuelta dentro de AFT. O sea: salir de
+  // aquí y volver a entrar cuando se quiera, entrando en AFT, no en auth.
+  // Si se mandara a `https://auth.procovar.cloud/` a secas, la persona
+  // seguiría con sesión allí y el siguiente entrar no le pediría contraseña.
+  // El `returnTo` lo escribe la propia persona de Accesos en su pantalla de
+  // confirmación; nosotros sólo lo pasamos. Se navega con window.location (y
+  // no con el router) porque esto cambia de origen de verdad.
+  const destino = `${window.location.origin}/inicio`
+  window.location.href = `${ACCESOS_URL}/logout?returnTo=${encodeURIComponent(destino)}`
 }
 </script>
 
