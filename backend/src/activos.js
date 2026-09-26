@@ -14,6 +14,20 @@ const alcance = require('./alcance');
 const tipoDe = (req) => (req.tipoActivo === 'UTIL' ? 'UTIL' : 'AFT');
 const esUtil = (req) => tipoDe(req) === 'UTIL';
 
+/**
+ * Tasa de cambio para estimar en CUP los activos que sólo tienen valor en
+ * dólares (en la hoja original casi ningún activo tiene valor_cup).
+ *
+ * No se guarda en la base: la tasa cambia cada semana y no debe tocar los datos
+ * de los activos. La fija quien despliega con la variable `TASA_CAMBIO` (en
+ * Dokploy → Environment del app); sin variable, el último dato conocido del
+ * mercado informal cubano (673 CUP/USD, 2/ago/2026, elTOQUE).
+ */
+const tasaCambio = () => {
+  const t = Number(process.env.TASA_CAMBIO);
+  return Number.isFinite(t) && t > 0 ? t : 675;
+};
+
 async function listActivos(req, res, next) {
   try {
     const { q, categoria, area, ubicacion, custodio, marca, estado, limite = 200, offset = 0 } = req.query;
@@ -429,7 +443,7 @@ async function dashboard(req, res, next) {
         FROM ubicaciones u LEFT JOIN activos a ON a.ubicacion_id = u.id AND a.estado = 'ACTIVO' AND a.tipo = 'AFT'${cUbi ? ` AND ${cUbi}` : ''}
         GROUP BY u.id, u.nombre ORDER BY u.nombre`, qUbi.params),
       dbp.query(`SELECT estado, COUNT(*)::int AS cantidad FROM activos a WHERE a.tipo = 'AFT'${cEst ? ` AND ${cEst}` : ''} GROUP BY estado`, qEst.params),
-      dbp.query(`SELECT COALESCE(SUM(valor_usd),0)::numeric AS valor_usd, COALESCE(SUM(valor_cup),0)::numeric AS valor_cup FROM activos a WHERE a.estado = ${estadoParam} AND a.tipo = 'AFT'${cVal ? ` AND ${cVal}` : ''}`, qVal.params),
+      dbp.query(`SELECT COALESCE(SUM(valor_usd),0)::numeric AS valor_usd, COALESCE(SUM(valor_cup),0)::numeric AS valor_cup, COALESCE(SUM(valor_usd) FILTER (WHERE valor_cup IS NULL),0)::numeric AS valor_usd_sin_cup FROM activos a WHERE a.estado = ${estadoParam} AND a.tipo = 'AFT'${cVal ? ` AND ${cVal}` : ''}`, qVal.params),
       dbp.query(`SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} WHERE a.tipo = 'AFT'${cRec ? ` AND ${cRec}` : ''} ORDER BY a.created_at DESC LIMIT 5`, qRec.params),
       dbp.query(`
         SELECT cu.nombre, COUNT(a.id)::int AS cantidad
@@ -443,12 +457,21 @@ async function dashboard(req, res, next) {
                COUNT(*) FILTER (WHERE custodio_id IS NULL)::int AS sin_responsable
         FROM activos a WHERE a.tipo = 'UTIL'${cUti ? ` AND ${cUti}` : ''}`, qUti.params)
     ]);
+    const v = valores.rows[0];
+    const tasa = tasaCambio();
     return res.json({
       total: total.rows[0].total,
       porCategoria: porCategoria.rows,
       porUbicacion: porUbicacion.rows,
       porEstado: porEstado.rows,
-      valores: valores.rows[0],
+      // El total en CUP: lo que ya esté en valor_cup + los activos que sólo
+      // tienen dólares, convertidos con la tasa. Sólo se convierten los que no
+      // tienen valor_cup, para que nadie se cuente dos veces.
+      valores: {
+        valor_usd: v.valor_usd,
+        valor_cup: Number(v.valor_cup) + Number(v.valor_usd_sin_cup) * tasa,
+        tasa
+      },
       recientes: recientes.rows,
       custodiosTop: custodiosTop.rows,
       utiles: utiles.rows[0]

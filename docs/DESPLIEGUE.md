@@ -35,10 +35,16 @@ PORT=8080
 # de Accesos saldría con http:// (allowedCallbackUrls sólo acepta https).
 TRUST_PROXY=1
 
+# Tasa de cambio para el total en CUP del dashboard: los activos que sólo
+# tienen valor en dólares se multiplican por esta tasa. Cambia cada semana, así
+# que aquí se cambia sin tocar datos. Opcional: sin ella se usa 675.
+TASA_CAMBIO=675
+
 # Accesos (SSO) — https://auth.procovar.cloud
 # AFT_AUTH_SIGNING_KEY: la clave hex que Jose te dé (procovar/.secretos).
-# Se lee en HEXADECIMAL, no como texto plano. Sin ella, el login SSO cae a
-# ?sso=nodisponible y el usuario entra por el login local de abajo.
+# Se lee en HEXADECIMAL, no como texto plano. Sin ella, la ida a Accesos no se
+# puede firmar y /login se queda en ?sso=nodisponible (entrada de reserva:
+# POST /auth/login con el admin).
 AFT_AUTH_URL=https://auth.procovar.cloud
 AFT_AUTH_CLIENT_ID=aft
 AFT_AUTH_SIGNING_KEY=<clave-hex>

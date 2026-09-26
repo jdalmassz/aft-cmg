@@ -112,11 +112,17 @@ Diccionarios para los formularios: `categorias`, `sucursales`, `ubicaciones`,
   "porCategoria": [{ "nombre": "...", "cantidad": 26 }],
   "porUbicacion": [{ "nombre": "LOGISTICA", "cantidad": 4 }],
   "porEstado": [{ "estado": "ACTIVO", "cantidad": 57 }],
-  "valores": { "valor_usd": "8192.65", "valor_cup": "0" },
+  "valores": { "valor_usd": "9157.65", "valor_cup": 6181417.5, "tasa": 675 },
   "recientes": [ { "id": 1, "descripcion": "...", ... } ],
   "custodiosTop": [ { "nombre": "...", "cantidad": 10 } ]
 }
 ```
+
+`valores.valor_cup` es el **total estimado en pesos**: lo que ya esté guardado en
+`valor_cup` + los activos que sólo tienen dólares, multiplicados por
+`valores.tasa` (los que ya tienen `valor_cup` no se convierten otra vez). La
+tasa viene de la variable de entorno `TASA_CAMBIO`; sin ella se usa 675 CUP/USD.
+No se guarda en la base: cambia cada semana y no toca los datos de los activos.
 
 ## Activos
 
