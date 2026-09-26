@@ -10,7 +10,7 @@
  * una, la cantidad: de un martillo hay uno, de los destornilladores hay diez y contarlos
  * de uno en uno sería inventarles diez códigos.
  */
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { api, formatMoneda, getUser } from '../api'
 import AppIcon from '../components/AppIcon.vue'
 import Drawer from '../components/Drawer.vue'
@@ -231,9 +231,19 @@ function fmtFecha(iso) {
   return new Date(iso).toLocaleString('es-CU', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
+// En escritorio la vista previa vive AL LADO del cajón de opciones, sin taparlo:
+// se pide al abrir el cajón y se vuelve a pedir sola cuando cambian los datos.
+// En móvil no cabe al lado, así que allí sigue siendo un botón.
+const mqMovil = window.matchMedia('(max-width: 640px)')
+const enMovil = ref(mqMovil.matches)
+const onMovil = (e) => { enMovil.value = e.matches }
+mqMovil.addEventListener('change', onMovil)
+onBeforeUnmount(() => mqMovil.removeEventListener('change', onMovil))
+
 function abrirExport(formato) {
   exportar_.value = { ...exportar_.value, formato, responsable: filtrosAplicados.value.custodio || '' }
   exportAbierto.value = true
+  refrescarPreview(true)
 }
 
 // Los parámetros y el nombre del fichero salen de aquí, para que la vista previa
@@ -262,17 +272,49 @@ async function descargar() {
     const pdf = exportar_.value.formato === 'pdf'
     const qs = paramsExport().toString()
     await api.download('/api/utiles/export' + (pdf ? '/pdf' : '') + (qs ? '?' + qs : ''), nombreExport())
-    exportAbierto.value = false
+    cerrarExport()
   } catch (e) { err(e.message) } finally { exportando.value = false }
 }
 
-// Vista previa: el MISMO PDF que se descargaría. Si sale bien, se cierra el
-// diálogo de opciones y se abre la hoja encima.
+// Vista previa: el MISMO PDF que se descargaría, enseñado en su propio cajón,
+// al lado del de opciones.
 const preview = usePreviewPdf()
+
+let qsPreview = ''
+let tPreview = null
 
 async function previsualizar() {
   const qs = paramsExport().toString()
   await preview.abrir('/api/utiles/export/pdf' + (qs ? '?' + qs : ''))
+}
+
+// La vista previa se refresca sola cuando cambian los datos, pero sólo si de
+// verdad cambiaron los parámetros: si no, escribir en «Período» reharía el PDF
+// en cada tecla.
+function refrescarPreview(inmediato) {
+  // En Excel no hay hoja que enseñar: si estaba abierta, se cierra.
+  if (exportar_.value.formato !== 'pdf') { qsPreview = ''; preview.cerrar(); return }
+  if (enMovil.value || !exportAbierto.value) return
+  const qs = paramsExport().toString()
+  if (qs === qsPreview) return
+  clearTimeout(tPreview)
+  const pedir = () => { qsPreview = qs; previsualizar() }
+  if (inmediato) pedir()
+  else tPreview = setTimeout(pedir, 350)
+}
+watch(exportar_, () => refrescarPreview(false), { deep: true })
+onBeforeUnmount(() => clearTimeout(tPreview))
+
+// Los dos cajones van juntos: se abren y se cierran como una sola cosa.
+function cerrarExport() {
+  exportAbierto.value = false
+  qsPreview = ''
+  preview.cerrar()
+}
+
+// En móvil la vista previa se pide con el botón y se encima al cajón de opciones.
+async function verPreview() {
+  await previsualizar()
   if (preview.abierta) exportAbierto.value = false
 }
 
@@ -461,7 +503,7 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
     </Drawer>
 
     <!-- Exportar -->
-    <Drawer :open="exportAbierto" :titulo="exportar_.formato === 'pdf' ? 'Hoja de conteo (PDF)' : 'Listado (Excel)'" :ancho="380" @close="exportAbierto = false">
+    <Drawer :open="exportAbierto" :titulo="exportar_.formato === 'pdf' ? 'Hoja de conteo (PDF)' : 'Listado (Excel)'" :ancho="380" @close="cerrarExport">
       <div class="form">
         <div class="field"><label>Responsable</label>
           <select v-model="exportar_.responsable" class="select"><option value="">Todos los responsables</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
@@ -480,21 +522,21 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
       </div>
       <p class="muted nota">{{ exportar_.formato === 'pdf' ? 'Salen sólo los que están en estado ACTIVO, agrupados por responsable.' : 'Mismas columnas que el inventario, sin ubicación y con la cantidad.' }}</p>
       <template #pie>
-        <button class="btn sec" @click="exportAbierto = false">Cancelar</button>
-        <button v-if="exportar_.formato === 'pdf'" class="btn sec" :disabled="preview.cargando || !total" title="Ver la hoja antes de descargarla" @click="previsualizar">
+        <button class="btn sec" @click="cerrarExport">Cancelar</button>
+        <button v-if="exportar_.formato === 'pdf' && enMovil" class="btn sec" :disabled="preview.cargando || !total" title="Ver la hoja antes de descargarla" @click="verPreview">
           <AppIcon name="eye" :size="15" /> {{ preview.cargando ? 'Generando…' : 'Vista previa' }}
         </button>
         <button class="btn" :disabled="exportando" @click="descargar"><AppIcon name="file" :size="15" /> {{ exportando ? 'Generando…' : 'Descargar' }}</button>
       </template>
     </Drawer>
 
-    <Drawer :open="preview.abierta" titulo="Vista previa de la hoja" subtitulo="Tal como se imprimirá" :ancho="860" clase="preview-drawer" @close="preview.cerrar">
+    <Drawer :open="preview.abierta" titulo="Vista previa de la hoja" subtitulo="Tal como se imprimirá" :ancho="860" clase="preview-drawer" :extra="{ '--dw-pegado': '380px' }" @close="cerrarExport">
       <div class="preview-caja">
         <iframe v-if="preview.url" class="preview-iframe" :src="preview.url" title="Vista previa de la hoja de conteo"></iframe>
         <div v-else class="center"><span class="spinner"></span></div>
       </div>
       <template #pie>
-        <button class="btn sec" @click="preview.cerrar">Cerrar</button>
+        <button class="btn sec" @click="cerrarExport">Cerrar</button>
         <button class="btn sec" :disabled="!preview.url" @click="preview.descargar(nombreExport())"><AppIcon name="file" :size="15" /> Descargar</button>
         <button class="btn" :disabled="!preview.url" @click="preview.imprimir"><AppIcon name="printer" :size="15" /> Imprimir</button>
       </template>
