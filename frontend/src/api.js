@@ -34,7 +34,7 @@ async function request(method, url, body) {
   const headers = { 'Content-Type': 'application/json' }
   if (TOKEN) headers.Authorization = `Bearer ${TOKEN}`
   const res = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined })
-  if (res.status === 401 && !url.includes('/auth/login')) {
+  if (res.status === 401) {
     clearSession()
     window.location.href = '/login'
     throw new Error('Sesión expirada')
@@ -68,9 +68,6 @@ const api = {
   }
 }
 
-// Accesos: correo y contraseña de la cuenta única de Procovar, contra
-// https://auth.procovar.cloud desde el servidor. No hay login propio.
-const login = (email, password) => api.post('/api/auth/login', { email, password })
 const fetchMe = () => api.get('/api/me').then((data) => {
   // El token del SSO vive en cookie httpOnly (no visible para JS); aquí solo
   // guardamos quién es, para que el router no tenga que preguntar cada vez.
@@ -87,4 +84,4 @@ function formatMoneda(n) {
   return Number(n).toLocaleString('es-CU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-export { api, login, fetchMe, logout, setSession, clearSession, getUser, getToken, formatMoneda }
+export { api, fetchMe, logout, setSession, clearSession, getUser, getToken, formatMoneda }
