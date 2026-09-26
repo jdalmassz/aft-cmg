@@ -14,7 +14,10 @@ const Areas = () => import('./views/AreasView.vue')
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/', redirect: '/inicio' },
+    // La raíz conserva la query: por aquí entran los `?sso=…` que devuelve el
+    // backend cuando la ida o el canje fallan, y si se perdieran aquí nadie
+    // vería nunca el motivo en la pantalla de login.
+    { path: '/', redirect: (to) => ({ path: '/inicio', query: to.query }) },
     { path: '/login', component: Login },
     { path: '/inicio', component: Dashboard, meta: { auth: true } },
     { path: '/activos', component: Activos, meta: { auth: true } },
