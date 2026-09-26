@@ -37,8 +37,8 @@ TRUST_PROXY=1
 
 # Tasa de cambio para el total en CUP del dashboard: los activos que sólo
 # tienen valor en dólares se multiplican por esta tasa. Cambia cada semana, así
-# que aquí se cambia sin tocar datos. Opcional: sin ella se usa 675.
-TASA_CAMBIO=675
+# que aquí se cambia sin tocar datos. Opcional: sin ella se usa 750.
+TASA_CAMBIO=750
 
 # Accesos (SSO) — https://auth.procovar.cloud
 # AFT_AUTH_SIGNING_KEY: la clave hex que Jose te dé (procovar/.secretos).

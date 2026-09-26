@@ -20,12 +20,12 @@ const esUtil = (req) => tipoDe(req) === 'UTIL';
  *
  * No se guarda en la base: la tasa cambia cada semana y no debe tocar los datos
  * de los activos. La fija quien despliega con la variable `TASA_CAMBIO` (en
- * Dokploy → Environment del app); sin variable, el último dato conocido del
- * mercado informal cubano (673 CUP/USD, 2/ago/2026, elTOQUE).
+ * Dokploy → Environment del app); sin variable, la tasa dada por quien mantiene
+ * el proyecto: **750 CUP/USD el 26/09/2026**.
  */
 const tasaCambio = () => {
   const t = Number(process.env.TASA_CAMBIO);
-  return Number.isFinite(t) && t > 0 ? t : 675;
+  return Number.isFinite(t) && t > 0 ? t : 750;
 };
 
 async function listActivos(req, res, next) {
