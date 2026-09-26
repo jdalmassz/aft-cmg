@@ -77,7 +77,11 @@ async function exportarPdf() {
         </div>
         <div class="card kpi">
           <div class="kpi-ico amber"><AppIcon name="dollar" :size="20" /></div>
-          <div><span class="kpi-v">${{ formatMoneda(data.valores.valor_cup) }}</span><span class="kpi-l">Valor total (CUP)</span></div>
+          <div>
+            <span class="kpi-v">${{ formatMoneda(data.valores.valor_cup) }}</span>
+            <span class="kpi-l">Valor total (CUP)</span>
+            <span class="kpi-sub">a tasa de {{ data.valores.tasa }} CUP por USD</span>
+          </div>
         </div>
         <div class="card kpi">
           <div class="kpi-ico purple"><AppIcon name="check-circle" :size="20" /></div>
@@ -153,6 +157,7 @@ h2 { margin: 0 0 4px; }
 .kpi-ico.purple { background: #7c3aed; }
 .kpi .kpi-v { display: block; font-size: 22px; font-weight: 800; line-height: 1.1; }
 .kpi .kpi-l { color: var(--muted); font-size: 12px; font-weight: 600; }
+.kpi .kpi-sub { display: block; color: var(--muted); font-size: 11px; }
 
 .estados { padding: 16px 20px; margin-bottom: 18px; }
 .estados h3 { margin: 0 0 12px; font-size: 14px; }
