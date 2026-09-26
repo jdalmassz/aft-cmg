@@ -64,4 +64,4 @@ async function ensureAdminUser() {
   console.log(`Usuario admin por defecto creado: ${username}`);
 }
 
-module.exports = { login, me, ensureAdminUser, sinDatosDe };
+module.exports = { login, publicUser, me, ensureAdminUser, sinDatosDe };

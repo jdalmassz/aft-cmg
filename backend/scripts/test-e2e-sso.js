@@ -168,6 +168,26 @@ function crearAccesos(escenario) {
       });
     }
 
+    // Entrada directa: la pantalla de login de la app manda el correo y la
+    // contraseña y NO se sale de la página. /token va sin firma; /verify, con ella.
+    if (req.method === 'POST' && req.url === '/api/auth/token') {
+      const b = JSON.parse(cuerpo || '{}');
+      if (!b.email || !b.password) return devolver(400, { error: 'invalid_body' });
+      if (b.email !== escenario.email || b.password !== escenario.password) {
+        return devolver(401, { error: 'invalid_credentials' });
+      }
+      return devolver(200, { access_token: `mock-${b.email}`, token_type: 'Bearer', expires_in: 3600 });
+    }
+
+    if (req.method === 'POST' && req.url === '/api/auth/verify') {
+      const f = firmado();
+      if (!f.ok) return devolver(f.status, { error: f.error });
+      const b = JSON.parse(cuerpo || '{}');
+      if (!b.token) return devolver(400, { error: 'invalid_body' });
+      if (!String(b.token).startsWith('mock-')) return devolver(401, { error: 'invalid_token' });
+      return devolver(200, { user: escenario.user, memberships: escenario.memberships });
+    }
+
     devolver(404, { error: 'no_encontrado' });
   });
 
@@ -391,6 +411,32 @@ const post = (ruta, cookie, cuerpo, auth) => pedido({ url: `${APP}${ruta}`, meto
     ok('sucursales que no son de las ocho no se aceptan', (await post('/api/admin/users', null, { username: 'local3', password: 'x1234567', sucursal: 'MADRID' }, admin.token)).status === 400);
     const local2 = json(await post('/auth/login', null, { username: 'local2', password: 'x1234567' }));
     ok('la cuenta local nueva ve los datos', json(await get('/api/activos', null, local2.token)).total === 57);
+
+    console.log('\n8b. Entrada directa: correo y contraseña de Accesos, sin salir de la página');
+    // Maria ya entró antes por el flujo de redirect. La identidad compartida es
+    // el correo, así que ésta tiene que coger SU fila y no abrir otra.
+    escenario.user = { id: 'u1', email: 'maria@procovar.cu', name: 'MARIA PEREZ', isSystemAdmin: false };
+    escenario.memberships = [{ organization: { slug: 'cam', name: 'Camagüey' }, roles: ['SUPERVISOR'] }];
+    escenario.email = 'maria@procovar.cu';
+    escenario.password = 'secreto123';
+
+    const directa = await post('/api/auth/login', null, { email: escenario.email, password: escenario.password });
+    const creada = json(directa);
+    ok('entra con el correo y la contraseña de Accesos', directa.status === 200 && !!creada.token, `${directa.status} ${directa.body.slice(0, 140)}`);
+    ok('y emite la misma cookie httpOnly que el flujo de redirect', /aft_sso=[^;]+/.test(cookieDe(directa)), cookieDe(directa));
+    ok('devuelve el usuario ya con sucursal y rol', creada.user && creada.user.sucursal === 'CAM' && creada.user.rol === 'usuario', JSON.stringify(creada.user || {}));
+    ok('y el token sirve para seguir trabajando', json(await get('/api/activos', null, creada.token)).total === 57);
+
+    const cdb = new Client({ host: PG.host, port: PG.port, user: PG.user, password: PG.password, database: bd });
+    await cdb.connect();
+    const { rows } = await cdb.query('SELECT count(*)::int AS n FROM users WHERE email = $1', [escenario.email]);
+    await cdb.end();
+    ok('no abre una segunda fila: reutiliza la cuenta de la misma persona', rows[0].n === 1, `filas=${rows[0].n}`);
+
+    const mala = await post('/api/auth/login', null, { email: escenario.email, password: 'no-es-esa' });
+    ok('contraseña mala → 401 con el mismo mensaje para los dos casos', mala.status === 401 && json(mala).error === 'Correo o contraseña incorrectos', `${mala.status} ${mala.body}`);
+    const sinCampos = await post('/api/auth/login', null, { email: escenario.email });
+    ok('sin contraseña no se ni se llama a Accesos (400)', sinCampos.status === 400, String(sinCampos.status));
 
     console.log('\n9. Sin clave no se revienta: se cae al login de siempre');
     servidorSinClave = arrancar({ ...entorno, PORT: String(APP_PUERTO_SIN_CLAVE), AFT_AUTH_SIGNING_KEY: '' });
