@@ -34,7 +34,9 @@ async function listActivos(req, res, next) {
     const from = buildWhere({ q, categoria, area, ubicacion, custodio, marca, estado, tipo: tipoDe(req), user: req.user });
     const total = await db.getPool().query(`SELECT COUNT(*)::int AS n ${ACTIVOS_FROM} ${from.sql}`, from.params);
     const rows = await db.getPool().query(
-      `SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} ${from.sql} ORDER BY a.id DESC LIMIT ${from.p(limite)} OFFSET ${from.p(offset)}`,
+      // En el mismo orden que el Excel y el PDF: `0001` arriba y el último
+      // abajo. Antes salía `a.id DESC` y el más reciente encabeza la lista.
+      `SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} ${from.sql} ORDER BY a.id ASC LIMIT ${from.p(limite)} OFFSET ${from.p(offset)}`,
       from.params
     );
     return res.json({ total: total.rows[0].n, activos: rows.rows });
