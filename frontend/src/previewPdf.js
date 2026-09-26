@@ -8,13 +8,20 @@ import { err } from './toast'
 // Se devuelve un objeto reactivo para que en la plantilla se lea directamente
 // (`preview.abierta`) sin andar con `.value`.
 export function usePreviewPdf() {
+  // Si se cambian los datos seguidos, cada cambio pide su PDF: sólo se enseña el
+  // de la última petición y las anteriores se sueltan sin tocar la pantalla.
+  let peticion = 0
   const preview = reactive({
     abierta: false,
     url: '',
     cargando: false,
 
     async abrir(ruta) {
+      const yo = ++peticion
       preview.cargando = true
+      // El cajón se abre ya, con el spinner: no hace falta esperar al PDF para
+      // enseñar dónde va a salir la hoja.
+      preview.abierta = true
       try {
         const headers = {}
         const token = getToken()
@@ -22,13 +29,15 @@ export function usePreviewPdf() {
         const res = await fetch(ruta, { headers })
         if (!res.ok) throw new Error('No se pudo generar la vista previa')
         const blob = await res.blob()
+        if (yo !== peticion) return
         if (preview.url) URL.revokeObjectURL(preview.url)
         preview.url = URL.createObjectURL(blob)
-        preview.abierta = true
       } catch (e) {
+        if (yo !== peticion) return
         err(e.message)
+        if (!preview.url) preview.abierta = false
       } finally {
-        preview.cargando = false
+        if (yo === peticion) preview.cargando = false
       }
     },
 
@@ -49,7 +58,9 @@ export function usePreviewPdf() {
     },
 
     cerrar() {
+      peticion++
       preview.abierta = false
+      preview.cargando = false
     }
   })
 

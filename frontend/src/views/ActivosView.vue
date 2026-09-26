@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import QRCode from 'qrcode'
 import { api, formatMoneda, getUser } from '../api'
 import AppIcon from '../components/AppIcon.vue'
@@ -241,10 +241,20 @@ function eliminar(a) {
   })
 }
 
+// En escritorio la vista previa vive AL LADO del cajón de opciones, sin taparlo:
+// se pide al abrir el cajón y se vuelve a pedir sola cuando cambian los datos.
+// En móvil no cabe al lado, así que allí sigue siendo un botón.
+const mqMovil = window.matchMedia('(max-width: 640px)')
+const enMovil = ref(mqMovil.matches)
+const onMovil = (e) => { enMovil.value = e.matches }
+mqMovil.addEventListener('change', onMovil)
+onBeforeUnmount(() => mqMovil.removeEventListener('change', onMovil))
+
 function abrirConteo(formato) {
   const f = filtrosAplicados.value
   conteo.value = { ...conteo.value, formato, area: f.area || '', ubicacion: f.ubicacion || '', responsable: f.custodio || '' }
   conteoAbierto.value = true
+  refrescarPreview(true)
 }
 
 function cambiarAreaConteo() {
@@ -283,17 +293,56 @@ async function exportar() {
     const qs = paramsConteo().toString()
     await api.download('/api/activos/export' + (pdf ? '/pdf' : '') + (qs ? '?' + qs : ''), nombreConteo())
     ok(pdf ? 'Hoja de conteo físico exportada a PDF' : 'Inventario exportado a Excel')
-    conteoAbierto.value = false
+    cerrarConteo()
   } catch (e) { err(e.message) } finally { exportandoPdf.value = false }
 }
 
-// Vista previa: el MISMO PDF que se descargaría. Si sale bien, se cierra el
-// diálogo de opciones y se abre la hoja encima.
+// Vista previa: el MISMO PDF que se descargaría, enseñado en su propio cajón,
+// al lado del de opciones.
 const preview = usePreviewPdf()
+
+let qsPreview = ''
+let tPreview = null
 
 async function previsualizar() {
   const qs = paramsConteo().toString()
   await preview.abrir('/api/activos/export/pdf' + (qs ? '?' + qs : ''))
+}
+
+// La vista previa se refresca sola cuando cambian los datos, pero sólo si de
+// verdad cambiaron los parámetros: si no, escribir en «Período» reharía el PDF
+// en cada tecla.
+function refrescarPreview(inmediato) {
+  // En Excel no hay hoja que enseñar: si estaba abierta, se cierra.
+  if (conteo.value.formato !== 'pdf') { qsPreview = ''; preview.cerrar(); return }
+  if (enMovil.value || !conteoAbierto.value) return
+  const qs = paramsConteo().toString()
+  if (qs === qsPreview) return
+  clearTimeout(tPreview)
+  const pedir = () => { qsPreview = qs; previsualizar() }
+  if (inmediato) pedir()
+  else tPreview = setTimeout(pedir, 350)
+}
+watch(conteo, () => refrescarPreview(false), { deep: true })
+onBeforeUnmount(() => clearTimeout(tPreview))
+
+// Los dos cajones van juntos: se abren y se cierran como una sola cosa.
+function cerrarConteo() {
+  conteoAbierto.value = false
+  qsPreview = ''
+  preview.cerrar()
+}
+
+function ponerFormato(f) {
+  conteo.value.formato = f
+  if (f !== 'pdf') { qsPreview = ''; preview.cerrar(); return }
+  qsPreview = ''
+  refrescarPreview(true)
+}
+
+// En móvil la vista previa se pide con el botón y se encima al cajón de opciones.
+async function verPreview() {
+  await previsualizar()
   if (preview.abierta) conteoAbierto.value = false
 }
 
@@ -566,10 +615,10 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
       </template>
     </Drawer>
 
-    <Drawer :open="conteoAbierto" :titulo="conteo.formato === 'pdf' ? 'Hoja de conteo físico' : 'Exportar a Excel'" subtitulo="Todo, por área, ubicación o responsable" @close="conteoAbierto = false">
+    <Drawer :open="conteoAbierto" :titulo="conteo.formato === 'pdf' ? 'Hoja de conteo físico' : 'Exportar a Excel'" subtitulo="Todo, por área, ubicación o responsable" @close="cerrarConteo">
       <div class="formato">
-        <button class="btn sec sm" :class="{ on: conteo.formato === 'pdf' }" @click="conteo.formato = 'pdf'">PDF · conteo físico</button>
-        <button class="btn sec sm" :class="{ on: conteo.formato === 'excel' }" @click="conteo.formato = 'excel'">Excel · inventario</button>
+        <button class="btn sec sm" :class="{ on: conteo.formato === 'pdf' }" @click="ponerFormato('pdf')">PDF · conteo físico</button>
+        <button class="btn sec sm" :class="{ on: conteo.formato === 'excel' }" @click="ponerFormato('excel')">Excel · inventario</button>
       </div>
       <div class="form-grid una">
         <div class="field"><label>Área</label>
@@ -596,21 +645,21 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
       </div>
       <p class="muted nota">{{ conteo.formato === 'pdf' ? 'Salen sólo los activos en estado ACTIVO, agrupados por área y ubicación.' : 'Mismo formato que «Control de AFT cmg rev01.xlsx».' }}</p>
       <template #pie>
-        <button class="btn sec" @click="conteoAbierto = false">Cancelar</button>
-        <button v-if="conteo.formato === 'pdf'" class="btn sec" :disabled="preview.cargando || !total" title="Ver la hoja antes de descargarla" @click="previsualizar">
+        <button class="btn sec" @click="cerrarConteo">Cancelar</button>
+        <button v-if="conteo.formato === 'pdf' && enMovil" class="btn sec" :disabled="preview.cargando || !total" title="Ver la hoja antes de descargarla" @click="verPreview">
           <AppIcon name="eye" :size="15" /> {{ preview.cargando ? 'Generando…' : 'Vista previa' }}
         </button>
         <button class="btn" :disabled="exportandoPdf" @click="exportar"><AppIcon name="file" :size="15" /> {{ exportandoPdf ? 'Generando…' : (conteo.formato === 'pdf' ? 'Descargar PDF' : 'Descargar Excel') }}</button>
       </template>
     </Drawer>
 
-    <Drawer :open="preview.abierta" titulo="Vista previa de la hoja" subtitulo="Tal como se imprimirá" :ancho="860" clase="preview-drawer" @close="preview.cerrar">
+    <Drawer :open="preview.abierta" titulo="Vista previa de la hoja" subtitulo="Tal como se imprimirá" :ancho="860" clase="preview-drawer" :extra="{ '--dw-pegado': '440px' }" @close="cerrarConteo">
       <div class="preview-caja">
         <iframe v-if="preview.url" class="preview-iframe" :src="preview.url" title="Vista previa de la hoja de conteo"></iframe>
         <div v-else class="center"><span class="spinner"></span></div>
       </div>
       <template #pie>
-        <button class="btn sec" @click="preview.cerrar">Cerrar</button>
+        <button class="btn sec" @click="cerrarConteo">Cerrar</button>
         <button class="btn sec" :disabled="!preview.url" @click="preview.descargar(nombreConteo())"><AppIcon name="file" :size="15" /> Descargar</button>
         <button class="btn" :disabled="!preview.url" @click="preview.imprimir"><AppIcon name="printer" :size="15" /> Imprimir</button>
       </template>

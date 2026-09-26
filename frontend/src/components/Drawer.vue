@@ -9,7 +9,10 @@ const props = defineProps({
   titulo: { type: String, default: '' },
   subtitulo: { type: String, default: '' },
   ancho: { type: Number, default: 440 },
-  clase: { type: String, default: '' }
+  clase: { type: String, default: '' },
+  // Estilos extra en línea, por si un cajón necesita variantes que no se pueden
+  // expresar con `ancho`/`clase` (p. ej. la reserva --dw-pegado de la vista previa).
+  extra: { type: Object, default: () => ({}) }
 })
 const emit = defineEmits(['close'])
 
@@ -57,7 +60,7 @@ function soltar() {
         v-if="open"
         class="dw"
         :class="clase"
-        :style="{ '--dw-ancho': ancho + 'px', transform: arrastre ? `translateY(${arrastre}px)` : null, transition: arrastre ? 'none' : null }"
+        :style="[extra, { '--dw-ancho': ancho + 'px', transform: arrastre ? `translateY(${arrastre}px)` : null, transition: arrastre ? 'none' : null }]"
         role="dialog"
         aria-modal="true"
       >
@@ -112,6 +115,14 @@ function soltar() {
 .dw-enter-from, .dw-leave-to { transform: translateX(100%); }
 .dw-fade-enter-active, .dw-fade-leave-active { transition: opacity 0.2s; }
 .dw-fade-enter-from, .dw-fade-leave-to { opacity: 0; }
+
+/* Dos cajones a la vez: la vista previa no tapa el de opciones, se queda pegada
+   a su izquierda y ocupa el resto de la pantalla (--dw-pegado = ancho del cajón
+   de opciones). En móvil no cabe al lado: allí sigue abriéndose encima. */
+@media (min-width: 641px) {
+  .dw.preview-drawer { left: 0; right: var(--dw-pegado, 0px); width: auto; max-width: none; }
+  .dw.preview-drawer.dw-enter-from, .dw.preview-drawer.dw-leave-to { transform: translateX(-100%); }
+}
 
 @media (max-width: 640px) {
   .dw {
