@@ -1,15 +1,16 @@
 <script setup>
 import { computed, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { getUser, clearSession, logout as doLogout } from './api'
 import AppIcon from './components/AppIcon.vue'
 import Toasts from './components/Toasts.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
 
 const route = useRoute()
-const router = useRouter()
 
 const user = computed(() => getUser())
+// Accesos: la puerta de entrada y también la de salida.
+const ACCESOS_URL = 'https://auth.procovar.cloud'
 const isAuthPage = computed(() => route.path === '/login')
 const menuOpen = ref(false)
 const colapsado = ref(localStorage.getItem('aft_sidebar') === '1')
@@ -41,10 +42,14 @@ async function logout() {
   // La cookie httpOnly la borra el servidor (el frontend no puede tocarla);
   // la sesión local también se limpia aquí por si el token ya había expirado.
   try { await doLogout() } catch { clearSession() }
-  // La puerta de entrada es Accesos, así que la de salida también: fuera de
-  // aquí, a su pantalla. Se navega con window.location (y no con el router)
-  // para que el cambio de origen sea de verdad.
-  window.location.href = 'https://auth.procovar.cloud/'
+  // La puerta de salida es la misma que la de entrada: `/logout` de Accesos es
+  // su pantalla de «cerrar sesión global en todas las apps», así que quien salga
+  // de aquí no se queda logueado en auth y puede volver a entrar cuando quiera.
+  // Si se mandara a `https://auth.procovar.cloud/` a secas, la persona seguiría
+  // con sesión allí y el siguiente entrar no le pediría contraseña.
+  // Se navega con window.location (y no con el router) porque esto cambia de
+  // origen de verdad.
+  window.location.href = `${ACCESOS_URL}/logout`
 }
 </script>
 
