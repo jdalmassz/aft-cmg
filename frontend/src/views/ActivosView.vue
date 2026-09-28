@@ -423,7 +423,7 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
       <input v-model="q" class="input" placeholder="Buscar por descripción, modelo, código…" @keyup.enter="aplicar" />
       <select v-model="fCategoria" class="select" @change="aplicar"><option value="">Categoría</option><option v-for="c in catalogo.categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
       <select v-model="fArea" class="select" @change="cambiarArea"><option value="">Área</option><option v-for="a in catalogo.areas" :key="a.id" :value="a.id">{{ a.etiqueta }}</option></select>
-      <select v-model="fUbicacion" class="select" @change="aplicar"><option value="">Ubicación</option><option v-for="u in ubicacionesFiltro" :key="u.id" :value="u.id">#{{ u.id }} · {{ u.nombre }}</option></select>
+      <select v-model="fUbicacion" class="select" @change="aplicar"><option value="">Ubicación</option><option v-for="u in ubicacionesFiltro" :key="u.id" :value="u.id">{{ u.nombre }}</option></select>
       <select v-model="fResponsable" class="select" @change="aplicar"><option value="">Responsable</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
       <select v-model="fEstado" class="select" @change="aplicar"><option value="">Estado</option><option v-for="e in ESTADOS" :key="e" :value="e">{{ e }}</option></select>
       <span class="btns">
@@ -464,7 +464,7 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
                 <td><b class="codigo">{{ a.codigo || '—' }}</b></td>
                 <td><b>{{ a.descripcion }}</b></td>
                 <td>{{ a.marca || '—' }}</td>
-                <td><span v-if="a.ubicacion" class="ubicacion"><span class="ubicacion-id">#{{ a.ubicacion_id }}</span> {{ a.ubicacion }}</span><span v-else>—</span></td>
+                <td><span v-if="a.ubicacion" class="ubicacion">{{ a.ubicacion }}</span><span v-else>—</span></td>
                 <td>{{ a.custodio || '—' }}</td>
                 <td><span class="badge" :class="a.estado === 'ACTIVO' ? 'ok' : 'warn'">{{ a.estado }}</span></td>
               </tr>
@@ -541,7 +541,7 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
               <select v-model="formulario.categoria_id" class="select"><option value="">—</option><option v-for="c in catalogo.categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
             </div>
             <div class="field"><label>Ubicación</label>
-              <select v-model="formulario.ubicacion_id" class="select"><option value="">—</option><option v-for="u in catalogo.ubicaciones" :key="u.id" :value="u.id">#{{ u.id }} · {{ u.nombre }}{{ u.area_id ? ' — ' + areaDe(u.area_id) : '' }}</option></select>
+              <select v-model="formulario.ubicacion_id" class="select"><option value="">—</option><option v-for="u in catalogo.ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}{{ u.area_id ? ' — ' + areaDe(u.area_id) : '' }}</option></select>
             </div>
             <div class="field"><label>Responsable</label>
               <select v-model="formulario.custodio_id" class="select"><option value="">—</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
@@ -560,7 +560,7 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
             <div class="det"><span>Marca</span><b>{{ activoSel.marca || '—' }}</b></div>
             <div class="det"><span>Modelo</span><b>{{ activoSel.modelo || '—' }}</b></div>
             <div class="det"><span>Área</span><b>{{ activoSel.area || '—' }}</b></div>
-            <div class="det"><span>Ubicación</span><b><span v-if="activoSel.ubicacion_id" class="ubicacion-id">#{{ activoSel.ubicacion_id }}</span> {{ activoSel.ubicacion || '—' }}</b></div>
+            <div class="det"><span>Ubicación</span><b>{{ activoSel.ubicacion || '—' }}</b></div>
             <div class="det"><span>Responsable</span><b>{{ activoSel.custodio || '—' }}</b></div>
             <div class="det"><span>Valor CUP</span><b>{{ formatMoneda(activoSel.valor_cup) }}</b></div>
             <div class="det"><span>Valor USD</span><b>{{ formatMoneda(activoSel.valor_usd) }}</b></div>
@@ -603,7 +603,7 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
           <select v-model="formulario.categoria_id" class="select"><option value="">—</option><option v-for="c in catalogo.categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
         </div>
         <div class="field"><label>Ubicación</label>
-          <select v-model="formulario.ubicacion_id" class="select"><option value="">—</option><option v-for="u in catalogo.ubicaciones" :key="u.id" :value="u.id">#{{ u.id }} · {{ u.nombre }}{{ u.area_id ? ' — ' + areaDe(u.area_id) : '' }}</option></select>
+          <select v-model="formulario.ubicacion_id" class="select"><option value="">—</option><option v-for="u in catalogo.ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}{{ u.area_id ? ' — ' + areaDe(u.area_id) : '' }}</option></select>
         </div>
         <div class="field"><label>Responsable</label>
           <select v-model="formulario.custodio_id" class="select"><option value="">—</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
@@ -629,7 +629,7 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
           <select v-model="conteo.area" class="select" @change="cambiarAreaConteo"><option value="">Todas las áreas</option><option v-for="a in catalogo.areas" :key="a.id" :value="a.id">{{ a.etiqueta }}</option></select>
         </div>
         <div class="field"><label>Ubicación</label>
-          <select v-model="conteo.ubicacion" class="select"><option value="">{{ conteo.area ? 'Todas las del área' : 'Todas las ubicaciones' }}</option><option v-for="u in ubicacionesConteo" :key="u.id" :value="u.id">#{{ u.id }} · {{ u.nombre }}</option></select>
+          <select v-model="conteo.ubicacion" class="select"><option value="">{{ conteo.area ? 'Todas las del área' : 'Todas las ubicaciones' }}</option><option v-for="u in ubicacionesConteo" :key="u.id" :value="u.id">{{ u.nombre }}</option></select>
         </div>
         <div class="field"><label>Responsable</label>
           <select v-model="conteo.responsable" class="select"><option value="">Todos los responsables</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
@@ -650,20 +650,19 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
       <p class="muted nota">{{ conteo.formato === 'pdf' ? 'Salen sólo los activos en estado ACTIVO, agrupados por área y ubicación.' : 'Mismo formato que «Control de AFT cmg rev01.xlsx».' }}</p>
       <template #pie>
         <button class="btn sec" @click="cerrarConteo">Cancelar</button>
-        <button v-if="conteo.formato === 'pdf' && enMovil" class="btn sec" :disabled="preview.cargando || !total" title="Ver la hoja antes de descargarla" @click="verPreview">
+        <button v-if="conteo.formato === 'pdf'" class="btn sec" :disabled="preview.cargando || !total" title="Ver la hoja antes de descargarla" @click="verPreview">
           <AppIcon name="eye" :size="15" /> {{ preview.cargando ? 'Generando…' : 'Vista previa' }}
         </button>
         <button class="btn" :disabled="exportandoPdf" @click="exportar"><AppIcon name="file" :size="15" /> {{ exportandoPdf ? 'Generando…' : (conteo.formato === 'pdf' ? 'Descargar PDF' : 'Descargar Excel') }}</button>
       </template>
     </Drawer>
 
-    <Drawer :open="preview.abierta" titulo="Vista previa de la hoja" subtitulo="Tal como se imprimirá" :ancho="860" clase="preview-drawer" :extra="{ '--dw-pegado': '440px' }" @close="cerrarConteo">
+    <Drawer :open="preview.abierta" titulo="Vista previa de la hoja" subtitulo="Tal como se imprimirá" :ancho="860" clase="preview-drawer" :extra="{ '--dw-pegado': '440px' }" :sinClose="true" @close="preview.cerrar">
       <div class="preview-caja">
         <iframe v-if="preview.url" class="preview-iframe" :src="preview.url" title="Vista previa de la hoja de conteo"></iframe>
         <div v-else class="center"><span class="spinner"></span></div>
       </div>
       <template #pie>
-        <button class="btn sec" @click="cerrarConteo">Cerrar</button>
         <button class="btn sec" :disabled="!preview.url" @click="preview.descargar(nombreConteo())"><AppIcon name="file" :size="15" /> Descargar</button>
         <button class="btn" :disabled="!preview.url" @click="preview.imprimir"><AppIcon name="printer" :size="15" /> Imprimir</button>
       </template>
@@ -697,11 +696,6 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
 .hint { font-style: italic; opacity: 0.85; }
 .head .btns { display: flex; gap: 8px; align-items: center; }
 .codigo { color: var(--primary); font-variant-numeric: tabular-nums; }
-.ubicacion-id {
-  display: inline-block; margin-right: 4px; padding: 1px 6px;
-  background: #eef4ff; color: var(--primary-dark); border: 1px solid #c9dcff;
-  border-radius: 6px; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums;
-}
 .filtros { display: flex; gap: 10px; padding: 12px; margin-bottom: 10px; flex-wrap: wrap; }
 .filtros .input { flex: 1 1 220px; }
 .filtros .select { flex: 0 1 200px; }

@@ -116,6 +116,7 @@ async function bootstrap() {
   adm.put('/areas/:id', areas.updateArea);
   adm.delete('/areas/:id', areas.deleteArea);
   adm.post('/ubicaciones', areas.createUbicacion);
+  adm.post('/ubicaciones/renumerar', areas.renumerarUbicaciones);
   adm.put('/ubicaciones/:id', areas.updateUbicacion);
   adm.delete('/ubicaciones/:id', areas.deleteUbicacion);
 

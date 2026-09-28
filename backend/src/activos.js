@@ -1,7 +1,7 @@
 const db = require('./db');
 const ExcelJS = require('exceljs');
 const { registerMovimiento } = require('./movimientos');
-const { ACTIVOS_COLUMNS, ACTIVOS_FROM, AREA_ETIQUETA, buildWhere } = require('./activos-query');
+const { ACTIVOS_COLUMNS, ACTIVOS_FROM, AREA_ETIQUETA, buildWhere, ordenUbicaciones } = require('./activos-query');
 const alcance = require('./alcance');
 
 /**
@@ -196,7 +196,7 @@ async function exportActivos(req, res, next) {
     const [rows, cats] = await Promise.all([
       db.getPool().query(
         `SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} ${from.sql}
-         ORDER BY ${separar === 'responsable' ? 'cu.nombre NULLS LAST, ' : separar ? 'ar.numero NULLS LAST, u.nombre NULLS LAST, ' : ''}a.id`,
+         ORDER BY ${separar === 'responsable' ? 'cu.nombre NULLS LAST, ' : separar ? `ar.numero NULLS LAST, ${ordenUbicaciones('u.')}, ` : ''}a.id`,
         from.params
       ),
       db.getPool().query('SELECT nombre, ejemplos FROM categorias ORDER BY id')
@@ -379,7 +379,7 @@ async function catalogo(req, res, next) {
       db.getPool().query('SELECT id, nombre, ejemplos FROM categorias ORDER BY nombre'),
       db.getPool().query('SELECT id, nombre FROM sucursales ORDER BY nombre'),
       db.getPool().query(`SELECT ar.id, ar.numero, ar.nombre, ${AREA_ETIQUETA} AS etiqueta FROM areas ar ORDER BY ar.numero`),
-      db.getPool().query('SELECT id, nombre, area_id FROM ubicaciones ORDER BY nombre'),
+      db.getPool().query(`SELECT id, nombre, area_id FROM ubicaciones ORDER BY ${ordenUbicaciones()}`),
       db.getPool().query('SELECT id, nombre FROM custodios ORDER BY nombre'),
       db.getPool().query('SELECT id, nombre FROM marcas ORDER BY nombre')
     ]);
@@ -443,7 +443,7 @@ async function dashboard(req, res, next) {
       dbp.query(`
         SELECT u.nombre, COUNT(a.id)::int AS cantidad
         FROM ubicaciones u LEFT JOIN activos a ON a.ubicacion_id = u.id AND a.estado = 'ACTIVO' AND a.tipo = 'AFT'${cUbi ? ` AND ${cUbi}` : ''}
-        GROUP BY u.id, u.nombre ORDER BY u.nombre`, qUbi.params),
+        GROUP BY u.id, u.nombre ORDER BY ${ordenUbicaciones('u.')}`, qUbi.params),
       dbp.query(`SELECT estado, COUNT(*)::int AS cantidad FROM activos a WHERE a.tipo = 'AFT'${cEst ? ` AND ${cEst}` : ''} GROUP BY estado`, qEst.params),
       dbp.query(`SELECT COALESCE(SUM(valor_usd),0)::numeric AS valor_usd, COALESCE(SUM(valor_cup),0)::numeric AS valor_cup, COALESCE(SUM(valor_usd) FILTER (WHERE valor_cup IS NULL),0)::numeric AS valor_usd_sin_cup FROM activos a WHERE a.estado = ${estadoParam} AND a.tipo = 'AFT'${cVal ? ` AND ${cVal}` : ''}`, qVal.params),
       dbp.query(`SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} WHERE a.tipo = 'AFT'${cRec ? ` AND ${cRec}` : ''} ORDER BY a.created_at DESC LIMIT 5`, qRec.params),

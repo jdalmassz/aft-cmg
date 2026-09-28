@@ -3,6 +3,20 @@ const AREA_ETIQUETA = `CASE WHEN ar.id IS NULL THEN NULL ELSE 'Área ' || ar.num
 
 const { condicionSucursal } = require('./alcance');
 
+/**
+ * Orden natural de las ubicaciones: «FACTURACION 2» antes que «FACTURACION 10».
+ *
+ * Cada ubicación es de una sola persona (COMERCIAL 1, COMERCIAL 2…), y un ORDER BY
+ * plano por nombre deja el 10 en el segundo sitio: se descoloca el filtro, el
+ * dashboard y, sobre todo, la hoja de conteo, que es la que se firma.
+ *
+ * `alias` es el prefijo de la tabla en la consulta ('u.') o nada si no lo hay.
+ */
+const ordenUbicaciones = (alias = '') =>
+  `regexp_replace(${alias}nombre, '\\s*\\d+$', '') NULLS LAST, ` +
+  `COALESCE(NULLIF(substring(${alias}nombre from '\\d+$'), ''), '0')::int NULLS LAST, ` +
+  `${alias}nombre NULLS LAST`;
+
 const ACTIVOS_COLUMNS = `
   a.id, a.tipo, a.cantidad, a.codigo, a.descripcion, a.modelo, a.valor_cup, a.valor_usd,
   a.fecha_adquisicion, a.estado, a.comentarios, a.created_at, a.updated_at,
@@ -57,4 +71,4 @@ function buildWhere({ q, categoria, area, ubicacion, custodio, marca, estado, ti
   return { sql: where.length ? 'WHERE ' + where.join(' AND ') : '', params, p };
 }
 
-module.exports = { ACTIVOS_COLUMNS, ACTIVOS_FROM, AREA_ETIQUETA, buildWhere };
+module.exports = { ACTIVOS_COLUMNS, ACTIVOS_FROM, AREA_ETIQUETA, buildWhere, ordenUbicaciones };
