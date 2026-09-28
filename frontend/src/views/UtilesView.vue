@@ -284,38 +284,43 @@ let qsPreview = ''
 let tPreview = null
 
 async function previsualizar() {
+  clearTimeout(tPreview) // por si quedaba una recarga programada
   const qs = paramsExport().toString()
+  qsPreview = qs
   await preview.abrir('/api/utiles/export/pdf' + (qs ? '?' + qs : ''))
 }
 
-// La vista previa se refresca sola cuando cambian los datos, pero sólo si de
-// verdad cambiaron los parámetros: si no, escribir en «Período» reharía el PDF
-// en cada tecla.
-function refrescarPreview(inmediato) {
+// `forzar` = pedirla siempre (al abrir el cajón o con el botón). Sin forzar sólo
+// se refresca si la hoja sigue abierta y cambiaron los parámetros: si no,
+// escribir en «Período» reharía el PDF en cada tecla, y un cambio no debe
+// reabrirla si la persona la acababa de cerrar.
+function refrescarPreview(forzar) {
   // En Excel no hay hoja que enseñar: si estaba abierta, se cierra.
   if (exportar_.value.formato !== 'pdf') { qsPreview = ''; preview.cerrar(); return }
   if (enMovil.value || !exportAbierto.value) return
+  if (!forzar && !preview.abierta) return
   const qs = paramsExport().toString()
-  if (qs === qsPreview) return
+  if (!forzar && qs === qsPreview) return
   clearTimeout(tPreview)
-  const pedir = () => { qsPreview = qs; previsualizar() }
-  if (inmediato) pedir()
-  else tPreview = setTimeout(pedir, 350)
+  if (forzar) previsualizar()
+  else tPreview = setTimeout(previsualizar, 350)
 }
 watch(exportar_, () => refrescarPreview(false), { deep: true })
 onBeforeUnmount(() => clearTimeout(tPreview))
 
-// Los dos cajones van juntos: se abren y se cierran como una sola cosa.
+// Cerrar el cajón de opciones se lleva la hoja con él (son la misma cosa). La ✕
+// de la hoja sólo cierra la hoja: las opciones quedan abiertas para seguir
+// tocándolas y el botón «Vista previa» del pie la vuelve a traer.
 function cerrarExport() {
   exportAbierto.value = false
-  qsPreview = ''
   preview.cerrar()
 }
 
-// En móvil la vista previa se pide con el botón y se encima al cajón de opciones.
+// Botón «Vista previa»: siempre disponible, para abrir la hoja o reabrirla.
 async function verPreview() {
   await previsualizar()
-  if (preview.abierta) exportAbierto.value = false
+  // En móvil las dos no caben apiladas: al abrir la hoja se van las opciones.
+  if (enMovil.value && preview.abierta) exportAbierto.value = false
 }
 
 onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
@@ -523,20 +528,19 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
       <p class="muted nota">{{ exportar_.formato === 'pdf' ? 'Salen sólo los que están en estado ACTIVO, agrupados por responsable.' : 'Mismas columnas que el inventario, sin ubicación y con la cantidad.' }}</p>
       <template #pie>
         <button class="btn sec" @click="cerrarExport">Cancelar</button>
-        <button v-if="exportar_.formato === 'pdf' && enMovil" class="btn sec" :disabled="preview.cargando || !total" title="Ver la hoja antes de descargarla" @click="verPreview">
+        <button v-if="exportar_.formato === 'pdf'" class="btn sec" :disabled="preview.cargando || !total" title="Ver la hoja antes de descargarla" @click="verPreview">
           <AppIcon name="eye" :size="15" /> {{ preview.cargando ? 'Generando…' : 'Vista previa' }}
         </button>
         <button class="btn" :disabled="exportando" @click="descargar"><AppIcon name="file" :size="15" /> {{ exportando ? 'Generando…' : 'Descargar' }}</button>
       </template>
     </Drawer>
 
-    <Drawer :open="preview.abierta" titulo="Vista previa de la hoja" subtitulo="Tal como se imprimirá" :ancho="860" clase="preview-drawer" :extra="{ '--dw-pegado': '380px' }" @close="cerrarExport">
+    <Drawer :open="preview.abierta" titulo="Vista previa de la hoja" subtitulo="Tal como se imprimirá" :ancho="860" clase="preview-drawer" :extra="{ '--dw-pegado': '380px' }" :sinClose="true" @close="preview.cerrar">
       <div class="preview-caja">
         <iframe v-if="preview.url" class="preview-iframe" :src="preview.url" title="Vista previa de la hoja de conteo"></iframe>
         <div v-else class="center"><span class="spinner"></span></div>
       </div>
       <template #pie>
-        <button class="btn sec" @click="cerrarExport">Cerrar</button>
         <button class="btn sec" :disabled="!preview.url" @click="preview.descargar(nombreExport())"><AppIcon name="file" :size="15" /> Descargar</button>
         <button class="btn" :disabled="!preview.url" @click="preview.imprimir"><AppIcon name="printer" :size="15" /> Imprimir</button>
       </template>
