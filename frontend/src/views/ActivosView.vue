@@ -9,7 +9,7 @@ import { ok, err } from '../toast'
 import { confirmar } from '../confirm'
 
 const activos = ref([])
-const catalogo = ref({ categorias: [], areas: [], ubicaciones: [], custodios: [], marcas: [] })
+const catalogo = ref({ categorias: [], areas: [], ubicaciones: [], custodios: [], marcas: [], responsablesPorArea: [] })
 const loading = ref(true)
 const errores = ref('')
 
@@ -44,7 +44,7 @@ const guardando = ref(false)
 
 const exportandoPdf = ref(false)
 const conteoAbierto = ref(false)
-const conteo = ref({ formato: 'pdf', area: '', ubicacion: '', responsable: '', separar: '', numero: '', periodo: '' })
+const conteo = ref({ formato: 'pdf', area: '', ubicacion: '', responsableArea: '', separar: '', numero: '', periodo: '' })
 const qrAbierto = ref(false)
 const qrImagenes = ref([])
 const qrTotal = ref(0)
@@ -108,6 +108,19 @@ const ubicacionesDe = (areaId) => (areaId
   : catalogo.value.ubicaciones)
 const ubicacionesFiltro = computed(() => ubicacionesDe(fArea.value))
 const ubicacionesConteo = computed(() => ubicacionesDe(conteo.value.area))
+
+// Quién puede firmar como «Responsable del Área»: los que tienen activos en el
+// área elegida; sin área, todos. Es el nombre que se pone en la firma de abajo
+// cuando la hoja no es de una sola persona.
+const responsablesConteo = computed(() => {
+  const todos = catalogo.value.responsablesPorArea || []
+  const lista = conteo.value.area
+    ? todos.filter((r) => r.area_id === Number(conteo.value.area))
+    : todos
+  const ya = new Map()
+  for (const r of lista) if (!ya.has(r.custodio_id)) ya.set(r.custodio_id, r.nombre)
+  return [...ya.entries()].map(([id, nombre]) => ({ id, nombre })).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+})
 
 function cambiarArea() {
   if (fUbicacion.value && !ubicacionesFiltro.value.some((u) => u.id === Number(fUbicacion.value))) fUbicacion.value = ''
@@ -252,13 +265,16 @@ onBeforeUnmount(() => mqMovil.removeEventListener('change', onMovil))
 
 function abrirConteo(formato) {
   const f = filtrosAplicados.value
-  conteo.value = { ...conteo.value, formato, area: f.area || '', ubicacion: f.ubicacion || '', responsable: f.custodio || '' }
+  conteo.value = { ...conteo.value, formato, area: f.area || '', ubicacion: f.ubicacion || '' }
+  if (conteo.value.responsableArea && !responsablesConteo.value.some((r) => r.id === Number(conteo.value.responsableArea))) conteo.value.responsableArea = ''
   conteoAbierto.value = true
   refrescarPreview(true)
 }
 
 function cambiarAreaConteo() {
   if (conteo.value.ubicacion && !ubicacionesConteo.value.some((u) => u.id === Number(conteo.value.ubicacion))) conteo.value.ubicacion = ''
+  // El responsable del área es de esa área: si ya no aparece en la nueva, se quita.
+  if (conteo.value.responsableArea && !responsablesConteo.value.some((r) => r.id === Number(conteo.value.responsableArea))) conteo.value.responsableArea = ''
 }
 
 // Los parámetros y el nombre del fichero salen de aquí, para que la vista previa
@@ -269,7 +285,7 @@ function paramsConteo() {
   const params = new URLSearchParams()
   if (c.area) params.set('area', c.area)
   if (c.ubicacion) params.set('ubicacion', c.ubicacion)
-  if (c.responsable) params.set('custodio', c.responsable)
+  if (c.responsableArea) params.set('resp_area', c.responsableArea)
   if (c.separar) params.set('separar', c.separar)
   if (pdf && c.numero) params.set('conteo', c.numero)
   if (pdf && c.periodo.trim()) params.set('periodo', c.periodo.trim())
@@ -280,8 +296,7 @@ function nombreConteo() {
   const c = conteo.value
   const pdf = c.formato === 'pdf'
   const parte = [
-    c.ubicacion ? nome(catalogo.value.ubicaciones, c.ubicacion) : c.area ? areaDe(c.area) : '',
-    c.responsable ? nome(catalogo.value.custodios, c.responsable) : ''
+    c.ubicacion ? nome(catalogo.value.ubicaciones, c.ubicacion) : c.area ? areaDe(c.area) : ''
   ].filter(Boolean).join('-')
   return (pdf ? 'Conteo-fisico' : 'AFT-Camaguey') + (parte ? '-' + parte.replace(/\s+/g, '_') : '') + '-' + new Date().toISOString().slice(0, 10) + (pdf ? '.pdf' : '.xlsx')
 }
@@ -619,7 +634,7 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
       </template>
     </Drawer>
 
-    <Drawer :open="conteoAbierto" :titulo="conteo.formato === 'pdf' ? 'Hoja de conteo físico' : 'Exportar a Excel'" subtitulo="Todo, por área, ubicación o responsable" @close="cerrarConteo">
+    <Drawer :open="conteoAbierto" :titulo="conteo.formato === 'pdf' ? 'Hoja de conteo físico' : 'Exportar a Excel'" subtitulo="Todo, por área o ubicación" @close="cerrarConteo">
       <div class="formato">
         <button class="btn sec sm" :class="{ on: conteo.formato === 'pdf' }" @click="ponerFormato('pdf')">PDF · conteo físico</button>
         <button class="btn sec sm" :class="{ on: conteo.formato === 'excel' }" @click="ponerFormato('excel')">Excel · inventario</button>
@@ -631,8 +646,9 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
         <div class="field"><label>Ubicación</label>
           <select v-model="conteo.ubicacion" class="select"><option value="">{{ conteo.area ? 'Todas las del área' : 'Todas las ubicaciones' }}</option><option v-for="u in ubicacionesConteo" :key="u.id" :value="u.id">{{ u.nombre }}</option></select>
         </div>
-        <div class="field"><label>Responsable</label>
-          <select v-model="conteo.responsable" class="select"><option value="">Todos los responsables</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
+        <div class="field"><label>Responsable del área</label>
+          <select v-model="conteo.responsableArea" class="select"><option value="">Automático (el de más activos)</option><option v-for="r in responsablesConteo" :key="r.id" :value="r.id">{{ r.nombre }}</option></select>
+          <small v-if="responsablesConteo.length === 0" class="muted">Sin responsables en esta área.</small>
         </div>
         <div class="field"><label>Separar</label>
           <select v-model="conteo.separar" class="select">

@@ -46,6 +46,8 @@ function metaFrom(req, extra = {}) {
     // El del filtro, que no cambia al partir por ubicación: es el respaldo de las
     // ubicaciones que no tienen una sola persona detrás.
     responsableFiltro: extra.responsable || '',
+    // El que se eligió a mano para firmar como «Responsable del Área».
+    responsableAreaSel: extra.responsableAreaSel || '',
     conteo: q.conteo || '',
     periodo: q.periodo || periodoActual(),
     generadoPor: q.generadoPor || req.user?.nombre || req.user?.username || '',
@@ -148,9 +150,23 @@ function drawFooter(doc, y) {
     M.left + half, yy, { width: w, lineBreak: false }
   );
   yy += 20;
-  doc.text('Nombre(s) y Apellidos: ______________________', M.left, yy, { width: w, lineBreak: false });
-  doc.text(`Nombre(s) y Apellidos: ${resp || '______________________'}`, M.left + half, yy, { width: w, lineBreak: false, ellipsis: true });
+  // Si la hoja no es de una sola persona se firma con el responsable del área: el
+  // que se eligió a mano en la hoja de conteo, o si no, el de más activos del área.
+  const delArea = doc._meta.responsableAreaSel || doc._meta.responsableArea || '';
+  const lineaIzq = 'Nombre(s) y Apellidos: ______________________';
+  const lineaDer = `Nombre(s) y Apellidos: ${resp || delArea || '______________________'}`;
+  // Un nombre largo no se corta: si no cabe en la mitad de la página, baja el
+  // tamaño de la letra (las dos mitades juntas, para que queden parejas).
+  doc.font('Helvetica').fontSize(9);
+  let tam = 9;
+  while (tam > 6.5 && doc.widthOfString(lineaDer) > w) {
+    tam -= 0.5;
+    doc.fontSize(tam);
+  }
+  doc.text(lineaIzq, M.left, yy, { width: w, lineBreak: false });
+  doc.text(lineaDer, M.left + half, yy, { width: w, lineBreak: false });
   yy += 20;
+  doc.font('Helvetica').fontSize(9);
   doc.text('Firma: ______________________', M.left, yy, { width: w, lineBreak: false });
   doc.text('Firma: ______________________', M.left + half, yy, { width: w, lineBreak: false });
 }
@@ -213,6 +229,23 @@ function responsableUnico(items) {
   return ids.size === 1 ? items[0].custodio || '' : '';
 }
 
+// El nombre con el que se firma la hoja cuando no es de una sola persona: el
+// responsable con más activos del área (el mismo que el «1» de la familia).
+function responsableDelArea(area) {
+  const conteo = new Map();
+  for (const ubic of area.ubicaciones) {
+    for (const a of ubic.items) {
+      if (!a.custodio_id) continue;
+      const e = conteo.get(a.custodio_id) || { nombre: a.custodio || '', n: 0 };
+      e.n += 1;
+      conteo.set(a.custodio_id, e);
+    }
+  }
+  const orden = [...conteo.values()]
+    .sort((a, b) => b.n - a.n || (a.nombre < b.nombre ? -1 : a.nombre > b.nombre ? 1 : 0));
+  return orden[0]?.nombre || '';
+}
+
 function escribirBloque(doc, activos, y, estado) {
   // Un útil no tiene área ni ubicación: sus líneas van seguidas bajo el responsable,
   // que ya está en la cabecera y en la firma. Meterlo en el árbol de áreas daría una
@@ -228,6 +261,9 @@ function escribirBloque(doc, activos, y, estado) {
   const respBase = doc._meta.responsableFiltro || '';
 
   for (const area of agrupar(activos)) {
+    // El de la firma del área mientras se escribe ésta, por si la hoja no es de
+    // una sola persona (entonces se firma como «Responsable del Área»).
+    doc._meta.responsableArea = responsableDelArea(area);
     let primeraDelArea = true;
     for (const ubic of area.ubicaciones) {
       const porUbicacion = doc._meta.separar === 'ubicacion';
@@ -320,17 +356,20 @@ async function exportActivosPdf(req, res, next) {
       from.params
     );
 
-    const [ar, ub, cu] = await Promise.all([
+    const [ar, ub, cu, ra] = await Promise.all([
       area ? pool.query(`SELECT ${AREA_ETIQUETA} AS etiqueta FROM areas ar WHERE ar.id = $1`, [area]) : null,
       ubicacion ? pool.query('SELECT id, nombre FROM ubicaciones WHERE id = $1', [ubicacion]) : null,
-      custodio ? pool.query('SELECT nombre FROM custodios WHERE id = $1', [custodio]) : null
+      custodio ? pool.query('SELECT nombre FROM custodios WHERE id = $1', [custodio]) : null,
+      // Quien se eligió a mano para firmar como responsable del área.
+      req.query.resp_area ? pool.query('SELECT nombre FROM custodios WHERE id = $1', [req.query.resp_area]) : null
     ]).then((rs) => rs.map((r) => r?.rows[0] || null));
 
     const meta = metaFrom(req, {
       sucursal: rows.rows[0]?.sucursal,
       area: ar ? ar.etiqueta : '',
       ubicacion: ub ? ub.nombre : '',
-      responsable: cu ? cu.nombre : ''
+      responsable: cu ? cu.nombre : '',
+      responsableAreaSel: ra ? ra.nombre : ''
     });
     const doc = new PDFDocument({
       size: 'LETTER',
