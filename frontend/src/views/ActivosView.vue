@@ -305,45 +305,49 @@ let qsPreview = ''
 let tPreview = null
 
 async function previsualizar() {
+  clearTimeout(tPreview) // por si quedaba una recarga programada
   const qs = paramsConteo().toString()
+  qsPreview = qs
   await preview.abrir('/api/activos/export/pdf' + (qs ? '?' + qs : ''))
 }
 
-// La vista previa se refresca sola cuando cambian los datos, pero sólo si de
-// verdad cambiaron los parámetros: si no, escribir en «Período» reharía el PDF
-// en cada tecla.
-function refrescarPreview(inmediato) {
+// `forzar` = pedirla siempre (al abrir el cajón, al pasar a PDF o con el botón).
+// Sin forzar sólo se refresca si la hoja sigue abierta y cambiaron los
+// parámetros: si no, escribir en «Período» reharía el PDF en cada tecla, y un
+// cambio no debe reabrirla si la persona la acababa de cerrar.
+function refrescarPreview(forzar) {
   // En Excel no hay hoja que enseñar: si estaba abierta, se cierra.
   if (conteo.value.formato !== 'pdf') { qsPreview = ''; preview.cerrar(); return }
   if (enMovil.value || !conteoAbierto.value) return
+  if (!forzar && !preview.abierta) return
   const qs = paramsConteo().toString()
-  if (qs === qsPreview) return
+  if (!forzar && qs === qsPreview) return
   clearTimeout(tPreview)
-  const pedir = () => { qsPreview = qs; previsualizar() }
-  if (inmediato) pedir()
-  else tPreview = setTimeout(pedir, 350)
+  if (forzar) previsualizar()
+  else tPreview = setTimeout(previsualizar, 350)
 }
 watch(conteo, () => refrescarPreview(false), { deep: true })
 onBeforeUnmount(() => clearTimeout(tPreview))
 
-// Los dos cajones van juntos: se abren y se cierran como una sola cosa.
+// Cerrar el cajón de opciones se lleva la hoja con él (son la misma cosa). La ✕
+// de la hoja sólo cierra la hoja: las opciones quedan abiertas para seguir
+// tocándolas y el botón «Vista previa» del pie la vuelve a traer.
 function cerrarConteo() {
   conteoAbierto.value = false
-  qsPreview = ''
   preview.cerrar()
 }
 
 function ponerFormato(f) {
   conteo.value.formato = f
   if (f !== 'pdf') { qsPreview = ''; preview.cerrar(); return }
-  qsPreview = ''
   refrescarPreview(true)
 }
 
-// En móvil la vista previa se pide con el botón y se encima al cajón de opciones.
+// Botón «Vista previa»: siempre disponible, para abrir la hoja o reabrirla.
 async function verPreview() {
   await previsualizar()
-  if (preview.abierta) conteoAbierto.value = false
+  // En móvil las dos no caben apiladas: al abrir la hoja se van las opciones.
+  if (enMovil.value && preview.abierta) conteoAbierto.value = false
 }
 
 async function generarEtiquetas() {

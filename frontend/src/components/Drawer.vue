@@ -1,7 +1,7 @@
 <script setup>
 // Cajón único de la aplicación: entra por la derecha en escritorio y desde abajo en
 // móvil, donde además se cierra arrastrando hacia abajo. Sustituye a los modales.
-// La ✕ va en la cabecera y no depende del contenedor: nunca puede desaparecer.
+// La ✕ va en la cabecera; con `sinClose` (la vista previa de la hoja) no tiene.
 import { ref, watch, onBeforeUnmount } from 'vue'
 
 const props = defineProps({
@@ -12,7 +12,10 @@ const props = defineProps({
   clase: { type: String, default: '' },
   // Estilos extra en línea, por si un cajón necesita variantes que no se pueden
   // expresar con `ancho`/`clase` (p. ej. la reserva --dw-pegado de la vista previa).
-  extra: { type: Object, default: () => ({}) }
+  extra: { type: Object, default: () => ({}) },
+  // La vista previa de la hoja no tiene botón ✕: se cierra con el backdrop, con
+  // Escape o al cerrar el cajón de opciones (que la lleva consigo).
+  sinClose: { type: Boolean, default: false }
 })
 const emit = defineEmits(['close'])
 
@@ -76,7 +79,7 @@ function soltar() {
                 </slot>
               </div>
             </div>
-            <button class="dw-close" title="Cerrar" aria-label="Cerrar" @click="cerrar">×</button>
+          <button v-if="!sinClose" class="dw-close" title="Eliminar" aria-label="Eliminar" @click="cerrar">×</button>
           </div>
         </div>
         <div class="dw-body"><slot /></div>
@@ -107,6 +110,9 @@ function soltar() {
   cursor: pointer; color: var(--text);
 }
 .dw-close:hover { background: #e2e8f0; }
+/* La vista previa de la hoja no tiene ✕: la cabecera queda sin botón, pero el
+   título y el subtítulo siguen vivos para que se sepa qué se está viendo. */
+.dw-head--notitle { justify-content: center; }
 .dw-body { flex: 1; overflow-y: auto; padding: 16px 18px; }
 .dw-foot { display: flex; gap: 8px; flex-wrap: wrap; padding: 14px 18px; border-top: 1px solid var(--border); }
 .dw-foot .btn { flex: 1; justify-content: center; }
