@@ -23,7 +23,6 @@ const COL = {
 };
 const ROW_H = 16;
 const AREA_H = 20;
-const UBIC_H = 17;
 const FOOTER_H = 90;
 
 function periodoActual() {
@@ -95,11 +94,10 @@ function drawHeader(doc, meta) {
     });
 
   // Lo seleccionado va en su propia línea, a todo el ancho: un nombre largo no
-  // cabe en el bloque de la izquierda sin pisar el título.
+  // cabe en el bloque de la izquierda sin pisar el título. Área y ubicación no:
+  // ya salen en el cuerpo, debajo, con su propio encabezado.
   let yCols = y0 + 84;
   const seleccion = [
-    meta.area && ['Área:', meta.area.replace(/^Área /, '')],
-    meta.ubicacion && ['Ubicación:', meta.ubicacion],
     meta.responsable && ['Responsable:', meta.responsable]
   ].filter(Boolean);
   if (seleccion.length) {
@@ -281,15 +279,14 @@ function escribirBloque(doc, activos, y, estado) {
       }
       estado.primera = false;
       if (primeraDelArea) {
-        y = ensureSpace(doc, y, AREA_H + UBIC_H + ROW_H);
+        y = ensureSpace(doc, y, AREA_H + ROW_H);
         doc.font('Helvetica-Bold').fontSize(10).text(area.etiqueta, M.left, y, { lineBreak: false });
         y += AREA_H;
         primeraDelArea = false;
       }
-      y = ensureSpace(doc, y, UBIC_H + ROW_H);
-      doc.font('Helvetica-Bold').fontSize(9)
-        .text(`Ubicación: ${ubic.nombre}`, M.left + 12, y, { lineBreak: false });
-      y += UBIC_H;
+      // Sin el rótulo «Ubicación: …»: con una ubicación por responsable ya se ve
+      // en la cabecera de quién es cada hoja, y sólo estorba arriba del listado.
+      y = ensureSpace(doc, y, ROW_H);
 
       y = escribirLineas(doc, ubic.items, y);
       y += 4;
