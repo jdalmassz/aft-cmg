@@ -375,13 +375,23 @@ async function deleteActivo(req, res, next) {
 
 async function catalogo(req, res, next) {
   try {
-    const [categorias, sucursales, areas, ubicaciones, custodios, marcas] = await Promise.all([
+    const [categorias, sucursales, areas, ubicaciones, custodios, marcas, respArea] = await Promise.all([
       db.getPool().query('SELECT id, nombre, ejemplos FROM categorias ORDER BY nombre'),
       db.getPool().query('SELECT id, nombre FROM sucursales ORDER BY nombre'),
       db.getPool().query(`SELECT ar.id, ar.numero, ar.nombre, ${AREA_ETIQUETA} AS etiqueta FROM areas ar ORDER BY ar.numero`),
       db.getPool().query(`SELECT id, nombre, area_id FROM ubicaciones ORDER BY ${ordenUbicaciones()}`),
       db.getPool().query('SELECT id, nombre FROM custodios ORDER BY nombre'),
-      db.getPool().query('SELECT id, nombre FROM marcas ORDER BY nombre')
+      db.getPool().query('SELECT id, nombre FROM marcas ORDER BY nombre'),
+      // Quién tiene activos en cada área: es de donde sale el selector de
+      // «Responsable del área» de la hoja de conteo (y el que firma si no se elige).
+      db.getPool().query(`
+        SELECT u.area_id, a.custodio_id, c.nombre, COUNT(*)::int AS activos
+          FROM activos a
+          JOIN ubicaciones u ON u.id = a.ubicacion_id
+          JOIN custodios c ON c.id = a.custodio_id
+         WHERE a.tipo = 'AFT' AND a.estado = 'ACTIVO'
+         GROUP BY u.area_id, a.custodio_id, c.nombre
+         ORDER BY c.nombre`)
     ]);
     return res.json({
       categorias: categorias.rows,
@@ -389,7 +399,8 @@ async function catalogo(req, res, next) {
       areas: areas.rows,
       ubicaciones: ubicaciones.rows,
       custodios: custodios.rows,
-      marcas: marcas.rows
+      marcas: marcas.rows,
+      responsablesPorArea: respArea.rows
     });
   } catch (e) { next(e); }
 }
