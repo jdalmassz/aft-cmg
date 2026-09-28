@@ -8,7 +8,6 @@ const data = ref(null)
 const loading = ref(true)
 const error = ref('')
 const exportando = ref(false)
-const exportandoPdf = ref(false)
 
 const usuario = computed(() => getUser() || {})
 const sinDatos = computed(() => !!usuario.value.sinDatos)
@@ -40,14 +39,6 @@ async function exportarExcel() {
     ok('Inventario exportado a Excel')
   } catch (e) { err(e.message) } finally { exportando.value = false }
 }
-
-async function exportarPdf() {
-  exportandoPdf.value = true
-  try {
-    await api.download('/api/activos/export/pdf', 'Conteo-fisico-' + new Date().toISOString().slice(0, 10) + '.pdf')
-    ok('Hoja de conteo físico exportada a PDF')
-  } catch (e) { err(e.message) } finally { exportandoPdf.value = false }
-}
 </script>
 
 <template>
@@ -63,7 +54,6 @@ async function exportarPdf() {
         <router-link to="/activos" class="btn sec sm"><AppIcon name="box" :size="15" /> Ver inventario</router-link>
         <router-link to="/activos" class="btn sm"><AppIcon name="plus" :size="15" /> Nuevo activo</router-link>
         <button class="btn sec sm" :disabled="exportando" @click="exportarExcel"><AppIcon name="file" :size="15" /> {{ exportando ? 'Exportando…' : 'Exportar Excel' }}</button>
-        <button class="btn sec sm" :disabled="exportandoPdf" @click="exportarPdf"><AppIcon name="file" :size="15" /> {{ exportandoPdf ? 'Exportando…' : 'Exportar PDF' }}</button>
       </div>
 
       <div class="kpis">
