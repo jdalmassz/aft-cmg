@@ -647,8 +647,9 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
           <select v-model="conteo.ubicacion" class="select"><option value="">{{ conteo.area ? 'Todas las del área' : 'Todas las ubicaciones' }}</option><option v-for="u in ubicacionesConteo" :key="u.id" :value="u.id">{{ u.nombre }}</option></select>
         </div>
         <div class="field"><label>Responsable del área</label>
-          <select v-model="conteo.responsableArea" class="select"><option value="">Automático (el de más activos)</option><option v-for="r in responsablesConteo" :key="r.id" :value="r.id">{{ r.nombre }}</option></select>
+          <select v-model="conteo.responsableArea" class="select"><option value="">Por defecto</option><option v-for="r in responsablesConteo" :key="r.id" :value="r.id">{{ r.nombre }}</option></select>
           <small v-if="responsablesConteo.length === 0" class="muted">Sin responsables en esta área.</small>
+          <small v-else class="muted">Quién firma en el pie de la hoja. En por defecto, el responsable principal del área.</small>
         </div>
         <div class="field"><label>Separar</label>
           <select v-model="conteo.separar" class="select">
