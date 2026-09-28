@@ -1,11 +1,21 @@
 const db = require('./db');
 
-const { AREA_ETIQUETA } = require('./activos-query');
+const { AREA_ETIQUETA, ordenUbicaciones } = require('./activos-query');
+const { registerMovimiento } = require('./movimientos');
 
 // Un área (Área 1, Área 2…) agrupa varias ubicaciones; cada ubicación pertenece a una sola.
 
 const duplicado = (res, que) => res.status(400).json({ error: `Ya existe ${que} con ese nombre` });
 const limpio = (v) => String(v || '').trim().toUpperCase();
+
+// Cada ubicación es de una sola persona y lleva su número: «COMERCIAL 1»,
+// «COMERCIAL 2»… El 1 es siempre el responsable con más activos.
+//
+// FACTURACION está exenta: sus números vienen del Excel original (ROXANA es
+// FACTURACION 1) y se cambian a mano, no por esta regla.
+const FAMILIAS_EXENTAS = new Set(['FACTURACION']);
+const familiaDe = (nombre) => limpio(nombre).replace(/\s*\d+$/, '');
+const cmpNombre = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
 async function listAreas(req, res, next) {
   try {
@@ -15,7 +25,7 @@ async function listAreas(req, res, next) {
       pool.query(`
         SELECT u.id, u.nombre, u.area_id, COUNT(a.id)::int AS activos
         FROM ubicaciones u LEFT JOIN activos a ON a.ubicacion_id = u.id
-        GROUP BY u.id ORDER BY u.nombre`)
+        GROUP BY u.id, u.nombre ORDER BY ${ordenUbicaciones('u.')}`)
     ]);
     return res.json({ areas: areas.rows, ubicaciones: ubicaciones.rows });
   } catch (e) { next(e); }
@@ -115,4 +125,142 @@ async function deleteUbicacion(req, res, next) {
   } catch (e) { next(e); }
 }
 
-module.exports = { listAreas, createArea, updateArea, deleteArea, createUbicacion, updateUbicacion, deleteUbicacion };
+/**
+ * Recalcula los números de las ubicaciones.
+ *
+ * La regla es una: cada familia (COMERCIAL, ECONOMIA…) queda como «FAM 1»,
+ * «FAM 2»…, con el responsable que MÁS activos tiene en el 1, y cada activo en
+ * la ubicación de su responsable. Si alguien cambia el responsable de un activo,
+ * aquí se vuelve a cuadrar.
+ *
+ * Se pide a mano desde la pantalla Áreas: los números no se mueven solos, para
+ * que un reparto corregido a mano no salte sin avisar.
+ */
+async function renumerarUbicaciones(req, res, next) {
+  try {
+    const pool = db.getPool();
+
+    const { rows: temporales } = await pool.query(`SELECT nombre FROM ubicaciones WHERE nombre LIKE '%§%' LIMIT 1`);
+    if (temporales.length) {
+      return res.status(409).json({
+        error: `Quedó el nombre temporal «${temporales[0].nombre}» de una renumeración anterior: se mira antes de seguir`
+      });
+    }
+
+    const { rows: todas } = await pool.query('SELECT id, nombre, area_id FROM ubicaciones ORDER BY id');
+    const familias = [...new Set(todas.map((u) => familiaDe(u.nombre)))]
+      .filter((f) => f && !FAMILIAS_EXENTAS.has(f))
+      .sort(cmpNombre);
+
+    const resumen = [];
+    for (const fam of familias) resumen.push(await renumerarFamilia(pool, fam, req.user?.id || null));
+    return res.json({ familias: resumen });
+  } catch (e) { next(e); }
+}
+
+async function renumerarFamilia(pool, fam, usuarioId) {
+  const sobrante = (filas) => filas.map((u) => `«${u.nombre}»`).join(', ');
+  const { rows: enFamilia } = await pool.query(
+    `SELECT id, nombre, area_id FROM ubicaciones WHERE regexp_replace(nombre, '\\s*\\d+$', '') = $1 ORDER BY id`,
+    [fam]
+  );
+  const { rows: acts } = await pool.query(
+    `SELECT a.id, a.ubicacion_id, a.custodio_id, c.nombre AS custodio
+       FROM activos a
+       JOIN ubicaciones u ON u.id = a.ubicacion_id
+       LEFT JOIN custodios c ON c.id = a.custodio_id
+      WHERE regexp_replace(u.nombre, '\\s*\\d+$', '') = $1
+      ORDER BY a.id`,
+    [fam]
+  );
+
+  const sinResponsable = acts.filter((a) => !a.custodio_id).length;
+  if (sinResponsable) return { familia: fam, motivo: `hay ${sinResponsable} activo(s) sin responsable` };
+  if (!acts.length) return { familia: fam, motivo: 'sin activos' };
+
+  const porCustodio = new Map();
+  for (const a of acts) {
+    const e = porCustodio.get(a.custodio_id) || { id: a.custodio_id, nombre: limpio(a.custodio), n: 0 };
+    e.n += 1;
+    porCustodio.set(a.custodio_id, e);
+  }
+  // El 1 siempre es el que más tiene; a igualdad, por nombre, como la lista de
+  // responsables, para que el resultado no dependa del orden de la consulta.
+  const ranking = [...porCustodio.values()].sort((a, b) => b.n - a.n || cmpNombre(a.nombre, b.nombre));
+  if (ranking.length <= 1) return { familia: fam, motivo: 'un solo responsable' };
+  if (enFamilia.length > ranking.length) {
+    throw new Error(
+      `${fam}: hay ${enFamilia.length} ubicaciones y sólo ${ranking.length} responsable(s); sobran y no las borro yo solo`
+    );
+  }
+
+  const n = ranking.length;
+  const objetivos = new Array(n);
+  const usadas = new Set();
+  for (let i = 0; i < n; i++) {
+    const r = enFamilia.find((u) => u.nombre === `${fam} ${i + 1}`);
+    if (r) { objetivos[i] = r; usadas.add(r.id); }
+  }
+  // Lo que sobra (la base «COMERCIAL» y los números que ya no tocan) cubre lo que
+  // falta, la base la primera: así el id de siempre se queda en el «1».
+  const sobrantes = enFamilia.filter((u) => !usadas.has(u.id))
+    .sort((a, b) => (a.nombre === fam ? 0 : 1) - (b.nombre === fam ? 0 : 1) || a.id - b.id);
+  for (let i = 0; i < n && sobrantes.length; i++) if (!objetivos[i]) objetivos[i] = sobrantes.shift();
+  if (sobrantes.length) {
+    throw new Error(`${fam}: sobran ${sobrante(sobrantes)} y no las borro yo solo`);
+  }
+
+  const areaBase = (enFamilia.find((u) => u.nombre === fam) || enFamilia[0] || {}).area_id ?? null;
+  const original = new Map(enFamilia.map((u) => [u.id, u.nombre]));
+
+  // Primero todas las de la familia a un nombre temporal único (sale del id):
+  // así se pueden intercambiar «FAM 1» y «FAM 2» de sitio sin chocar con el
+  // UNIQUE de nombre, y las nuevas ya se crean con su nombre definitivo.
+  for (const u of enFamilia) {
+    const temp = `§${u.id}§`;
+    await pool.query('UPDATE ubicaciones SET nombre = $1 WHERE id = $2', [temp, u.id]);
+    u.nombre = temp; // lo que se guarda aquí es lo que se compara abajo
+  }
+
+  let creadas = 0;
+  for (let i = 0; i < n; i++) {
+    if (objetivos[i]) continue;
+    const r = await pool.query(
+      'INSERT INTO ubicaciones (nombre, area_id) VALUES ($1, $2) RETURNING id, nombre, area_id',
+      [`${fam} ${i + 1}`, areaBase]
+    );
+    objetivos[i] = r.rows[0];
+    creadas += 1;
+  }
+
+  let renombradas = 0;
+  for (let i = 0; i < n; i++) {
+    const destino = `${fam} ${i + 1}`;
+    if (objetivos[i].nombre === destino) continue;
+    await pool.query('UPDATE ubicaciones SET nombre = $1 WHERE id = $2', [destino, objetivos[i].id]);
+    if (original.get(objetivos[i].id) !== destino) renombradas += 1;
+    objetivos[i].nombre = destino;
+  }
+
+  let movidos = 0;
+  for (let i = 0; i < n; i++) {
+    const destino = objetivos[i].id;
+    for (const a of acts) {
+      if (a.custodio_id !== ranking[i].id || a.ubicacion_id === destino) continue;
+      await pool.query('UPDATE activos SET ubicacion_id = $1, updated_at = now() WHERE id = $2', [destino, a.id]);
+      await registerMovimiento(pool, {
+        activo_id: a.id,
+        tipo: 'TRASLADO_UBICACION',
+        ubicacion_origen_id: a.ubicacion_id,
+        ubicacion_destino_id: destino,
+        comentario: 'Renumeración por responsable',
+        usuario_id: usuarioId
+      });
+      movidos += 1;
+    }
+  }
+
+  return { familia: fam, responsables: n, creadas, renombradas, movidos };
+}
+
+module.exports = { listAreas, createArea, updateArea, deleteArea, createUbicacion, updateUbicacion, deleteUbicacion, renumerarUbicaciones };

@@ -74,6 +74,25 @@ async function guardar() {
   } catch (e) { errForm.value = e.message } finally { guardando.value = false }
 }
 
+// Cada ubicación lleva el número de su responsable y el 1 es el que más activos
+// tiene. Los números no se mueven solos: se piden aquí, cuando cambia alguien.
+const renumerando = ref(false)
+
+function renumerar() {
+  confirmar({
+    titulo: 'Renumerar por responsable',
+    mensaje: 'Las ubicaciones vuelven a cuadrarse con sus responsables: el 1 pasa a ser el que más activos tiene y cada activo se queda en la de su persona. Los cambios quedan en el historial de movimientos. FACTURACION no se toca.'
+  }, async () => {
+    renumerando.value = true
+    try {
+      const r = await api.post('/api/admin/ubicaciones/renumerar', {})
+      const movidos = r.familias.reduce((s, f) => s + (f.movidos || 0), 0)
+      ok(movidos ? `Renumerado: ${movidos} activo(s) movido(s)` : 'Ya estaba cuadrado')
+      cargar()
+    } catch (e) { err(e.message) } finally { renumerando.value = false }
+  })
+}
+
 function eliminar() {
   const { tipo, item } = cajon.value
   const base = tipo === 'area' ? '/api/admin/areas' : '/api/admin/ubicaciones'
@@ -102,6 +121,7 @@ onMounted(cargar)
         <p class="muted">{{ areas.length }} área(s) · {{ ubicaciones.length }} ubicación(es). Un área agrupa varias ubicaciones.</p>
       </div>
       <span class="btns">
+        <button class="btn sec" :disabled="renumerando" title="El 1 pasa a ser el responsable con más activos" @click="renumerar"><AppIcon name="check" :size="14" /> {{ renumerando ? 'Renumerando…' : 'Renumerar' }}</button>
         <button class="btn sec" @click="abrir('ubicacion')"><AppIcon name="plus" :size="14" /> Ubicación</button>
         <button class="btn" @click="abrir('area')"><AppIcon name="plus" :size="14" /> Nueva área</button>
       </span>
@@ -121,7 +141,7 @@ onMounted(cargar)
         </div>
         <ul class="ubics">
           <li v-for="u in g.ubicaciones" :key="u.id" @click="abrir('ubicacion', u)">
-            <span><span class="num">#{{ u.id }}</span> {{ u.nombre }}</span>
+            <span>{{ u.nombre }}</span>
             <span class="badge" :class="u.activos ? 'ok' : 'warn'">{{ u.activos }}</span>
           </li>
           <li v-if="!g.ubicaciones.length" class="vacio">Sin ubicaciones</li>
@@ -175,11 +195,6 @@ onMounted(cargar)
 .area-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
 .area-head b { display: block; font-size: 14px; }
 .area-head .muted { font-size: 12px; }
-.num {
-  display: inline-block; padding: 1px 6px; margin-right: 2px;
-  background: #eef4ff; color: var(--primary-dark); border: 1px solid #c9dcff;
-  border-radius: 6px; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums;
-}
 .ubics { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .ubics li {
   display: flex; justify-content: space-between; align-items: center; gap: 8px;

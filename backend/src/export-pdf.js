@@ -2,7 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const PDFDocument = require('pdfkit');
 const db = require('./db');
-const { ACTIVOS_COLUMNS, ACTIVOS_FROM, AREA_ETIQUETA, buildWhere } = require('./activos-query');
+const { ACTIVOS_COLUMNS, ACTIVOS_FROM, AREA_ETIQUETA, buildWhere, ordenUbicaciones } = require('./activos-query');
 
 const LOGO = path.join(__dirname, 'assets', 'procovar-logo.png');
 
@@ -43,6 +43,9 @@ function metaFrom(req, extra = {}) {
     area: extra.area || '',
     ubicacion: extra.ubicacion || '',
     responsable: extra.responsable || '',
+    // El del filtro, que no cambia al partir por ubicación: es el respaldo de las
+    // ubicaciones que no tienen una sola persona detrás.
+    responsableFiltro: extra.responsable || '',
     conteo: q.conteo || '',
     periodo: q.periodo || periodoActual(),
     generadoPor: q.generadoPor || req.user?.nombre || req.user?.username || '',
@@ -182,8 +185,6 @@ function agrupar(activos) {
   return [...areas.values()].map((ar) => ({ ...ar, ubicaciones: [...ar.ubicaciones.values()] }));
 }
 
-const etiqueta = (id, nombre) => (id != null ? `${id} - ${nombre}` : nombre);
-
 // Escribe un bloque Área → Ubicación → activos. Con separar === 'ubicacion' cada
 // ubicación arranca página nueva (la anterior cierra con sus firmas).
 function escribirLineas(doc, items, y) {
@@ -203,6 +204,15 @@ function escribirLineas(doc, items, y) {
   return y;
 }
 
+// El nombre con el que se firma la hoja. Cada ubicación es de una sola persona
+// (COMERCIAL 1, FACTURACION 2…), así que al partir por ubicación cada quien se
+// lleva la suya con su nombre en la cabecera y en la firma. Si la ubicación
+// tiene más de un responsable no hay con qué firmar y se devuelve vacío.
+function responsableUnico(items) {
+  const ids = new Set(items.map((a) => a.custodio_id ?? 'sin'));
+  return ids.size === 1 ? items[0].custodio || '' : '';
+}
+
 function escribirBloque(doc, activos, y, estado) {
   // Un útil no tiene área ni ubicación: sus líneas van seguidas bajo el responsable,
   // que ya está en la cabecera y en la firma. Meterlo en el árbol de áreas daría una
@@ -212,14 +222,26 @@ function escribirBloque(doc, activos, y, estado) {
     return escribirLineas(doc, activos, y) + 4;
   }
 
+  // El responsable del filtro (si lo hay) sirve de respaldo para las ubicaciones
+  // que no tienen una sola persona detrás. Es el del filtro y no el de la primera
+  // ubicación: si ésta tiene varias personas, la firma se queda como estaba.
+  const respBase = doc._meta.responsableFiltro || '';
+
   for (const area of agrupar(activos)) {
     let primeraDelArea = true;
     for (const ubic of area.ubicaciones) {
-      if (doc._meta.separar === 'ubicacion' && !estado.primera) {
+      const porUbicacion = doc._meta.separar === 'ubicacion';
+      const nuevo = porUbicacion ? responsableUnico(ubic.items) || respBase : doc._meta.responsable;
+      if (porUbicacion && !estado.primera) {
+        // La página que se cierra es la de la ubicación anterior: su firma se pinta
+        // con el nombre de ésta, y recién entonces se cambia para la que empieza.
         drawFooter(doc, y);
+        doc._meta.responsable = nuevo;
         doc.addPage();
         y = drawHeader(doc, doc._meta);
         primeraDelArea = true;
+      } else if (porUbicacion) {
+        doc._meta.responsable = nuevo;
       }
       estado.primera = false;
       if (primeraDelArea) {
@@ -230,7 +252,7 @@ function escribirBloque(doc, activos, y, estado) {
       }
       y = ensureSpace(doc, y, UBIC_H + ROW_H);
       doc.font('Helvetica-Bold').fontSize(9)
-        .text(`Ubicación: ${etiqueta(ubic.id, ubic.nombre)}`, M.left + 12, y, { lineBreak: false });
+        .text(`Ubicación: ${ubic.nombre}`, M.left + 12, y, { lineBreak: false });
       y += UBIC_H;
 
       y = escribirLineas(doc, ubic.items, y);
@@ -264,6 +286,14 @@ function writeConteoPdf(doc, activos, meta) {
     return doc;
   }
 
+  // La cabecera de la primera página se pinta antes de recorrer las ubicaciones,
+  // así que, si se parte por ubicación, el nombre del que abre el documento se
+  // calcula aquí: ése es el que firma esa primera hoja.
+  if (meta.separar === 'ubicacion' && activos.length) {
+    const primera = agrupar(activos)[0]?.ubicaciones[0];
+    if (primera) meta.responsable = responsableUnico(primera.items) || meta.responsableFiltro || '';
+  }
+
   let y = drawHeader(doc, meta);
   if (!activos.length) {
     doc.font('Helvetica-Oblique').fontSize(10)
@@ -286,7 +316,7 @@ async function exportActivosPdf(req, res, next) {
     const from = buildWhere({ q, categoria, area, ubicacion, custodio, marca, estado, tipo: util ? 'UTIL' : 'AFT', user: req.user });
     const rows = await pool.query(
       `SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} ${from.sql}
-       ORDER BY ${util || req.query.separar === 'responsable' ? 'cu.nombre NULLS LAST, ' : ''}ar.numero NULLS LAST, u.nombre NULLS LAST, a.codigo NULLS LAST, a.id`,
+       ORDER BY ${util || req.query.separar === 'responsable' ? 'cu.nombre NULLS LAST, ' : ''}ar.numero NULLS LAST, ${ordenUbicaciones('u.')}, a.codigo NULLS LAST, a.id`,
       from.params
     );
 
@@ -299,7 +329,7 @@ async function exportActivosPdf(req, res, next) {
     const meta = metaFrom(req, {
       sucursal: rows.rows[0]?.sucursal,
       area: ar ? ar.etiqueta : '',
-      ubicacion: ub ? etiqueta(ub.id, ub.nombre) : '',
+      ubicacion: ub ? ub.nombre : '',
       responsable: cu ? cu.nombre : ''
     });
     const doc = new PDFDocument({
