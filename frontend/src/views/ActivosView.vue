@@ -1,6 +1,5 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
-import QRCode from 'qrcode'
 import { api, formatMoneda, getUser } from '../api'
 import { getCatalogo, invalidarCatalogo } from '../catalogo'
 import { construirDocumento, imprimirDocumento } from '../imprimir'
@@ -438,6 +437,9 @@ async function generarEtiquetas() {
   generandoQr.value = true
   qrImagenes.value = []
   try {
+    // Se pide la librería sólo aquí: pesa ~30 kB y la pantalla de Inventario no
+    // la necesita hasta que alguien abre las etiquetas QR.
+    const { default: QRCode } = await import('qrcode')
     const qs = filtrosQuery().toString()
     const res = await api.get('/api/activos' + (qs ? '?' + qs + '&' : '?') + 'limite=1000')
     qrTotal.value = res.total
