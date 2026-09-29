@@ -170,11 +170,21 @@ async function cargarCatalogo() {
   catalogo.value = await getCatalogo()
 }
 
+// Se busca al escribir: no hay que dar Enter ni pulsar «Filtrar». Se espera un
+// poco para no pedir la lista con cada tecla; Enter sigue buscando al momento.
+let tBusqueda = null
+
 function aplicar() {
+  clearTimeout(tBusqueda)
   pagina.value = 1
   filtrosAplicados.value = { q: q.value.trim(), categoria: fCategoria.value, area: fArea.value, custodio: fResponsable.value, estado: fEstado.value }
   cargar()
 }
+
+watch(q, () => {
+  clearTimeout(tBusqueda)
+  tBusqueda = setTimeout(aplicar, 350)
+})
 
 function limpiar() {
   q.value = ''; fCategoria.value = ''; fArea.value = ''; fResponsable.value = ''; fEstado.value = ''
@@ -262,10 +272,12 @@ const mqMovil = window.matchMedia('(max-width: 640px)')
 const enMovil = ref(mqMovil.matches)
 const onMovil = (e) => { enMovil.value = e.matches }
 mqMovil.addEventListener('change', onMovil)
-onBeforeUnmount(() => mqMovil.removeEventListener('change', onMovil))
+onBeforeUnmount(() => { clearTimeout(tBusqueda); mqMovil.removeEventListener('change', onMovil) })
 
 function abrirConteo(formato) {
   const f = filtrosAplicados.value
+  // La selección se rellena con el filtro de la tabla y sólo la usa el PDF;
+  // el Excel sale entero y ni siquiera la enseña.
   conteo.value = { ...conteo.value, formato, area: f.area || '', responsable: f.custodio || '' }
   if (conteo.value.responsable && !responsablesConteo.value.some((r) => r.id === Number(conteo.value.responsable))) conteo.value.responsable = ''
   conteoAbierto.value = true
@@ -288,8 +300,9 @@ function paramsConteo() {
   const c = conteo.value
   const pdf = c.formato === 'pdf'
   const params = new URLSearchParams()
-  if (c.area) params.set('area', c.area)
-  if (c.responsable) params.set('custodio', c.responsable)
+  // El Excel es el inventario entero: no lleva selección. El PDF sí la exige.
+  if (pdf && c.area) params.set('area', c.area)
+  if (pdf && c.responsable) params.set('custodio', c.responsable)
   if (pdf && c.numero) params.set('conteo', c.numero)
   if (pdf && c.periodo.trim()) params.set('periodo', c.periodo.trim())
   return params
@@ -298,10 +311,10 @@ function paramsConteo() {
 function nombreConteo() {
   const c = conteo.value
   const pdf = c.formato === 'pdf'
-  const parte = [
+  const parte = (pdf ? [
     c.area ? areaDe(c.area) : '',
     c.responsable ? nome(catalogo.value.custodios, c.responsable) : ''
-  ].filter(Boolean).join('-')
+  ] : []).filter(Boolean).join('-')
   return (pdf ? 'Conteo-fisico' : 'AFT-Camaguey') + (parte ? '-' + parte.replace(/\s+/g, '_') : '') + '-' + new Date().toISOString().slice(0, 10) + (pdf ? '.pdf' : '.xlsx')
 }
 
@@ -439,7 +452,7 @@ onMounted(() => {
       </div>
       <span class="btns">
         <button class="btn sec sm" :class="{ on: filasCompactas }" @click="toggleCompacto" :title="filasCompactas ? 'Filas normales' : 'Filas compactas (ver más registros)'"><AppIcon name="rows" :size="15" /> <span class="hbt">Compacto</span></button>
-        <button class="btn sec sm" @click="abrirConteo('excel')" title="Inventario en Excel: el área que elijas, o todo"><AppIcon name="file" :size="15" /> Excel</button>
+        <button class="btn sec sm" @click="abrirConteo('excel')" title="Inventario entero en Excel, sin elegir nada"><AppIcon name="file" :size="15" /> Excel</button>
         <button class="btn sec sm" :disabled="exportandoPdf || !total" @click="abrirConteo('pdf')" title="Hoja de conteo físico en PDF: hay que elegir área y responsable"><AppIcon name="file" :size="15" /> PDF</button>
         <button class="btn sec sm" :disabled="!total" @click="generarEtiquetas" title="Generar etiquetas QR de los activos filtrados"><AppIcon name="qr" :size="15" /> QR</button>
         <button class="btn sm" @click="abrirNuevo"><AppIcon name="plus" :size="15" /> Nuevo activo</button>
@@ -646,30 +659,30 @@ onMounted(() => {
       </template>
     </Drawer>
 
-    <Drawer :open="conteoAbierto" :titulo="conteo.formato === 'pdf' ? 'Hoja de conteo físico' : 'Exportar a Excel'" subtitulo="Por área y responsable" @close="cerrarConteo">
+    <Drawer :open="conteoAbierto" :titulo="conteo.formato === 'pdf' ? 'Hoja de conteo físico' : 'Exportar a Excel'" :subtitulo="conteo.formato === 'pdf' ? 'Por área y responsable' : 'Todo el inventario'" @close="cerrarConteo">
       <div class="formato">
         <button class="btn sec sm" :class="{ on: conteo.formato === 'pdf' }" @click="ponerFormato('pdf')">PDF · conteo físico</button>
-        <button class="btn sec sm" :class="{ on: conteo.formato === 'excel' }" @click="ponerFormato('excel')">Excel · inventario</button>
+        <button class="btn sec sm" :class="{ on: conteo.formato === 'excel' }" @click="ponerFormato('excel')">Excel · todo</button>
       </div>
-      <div class="form-grid una">
+      <!-- El PDF es una hoja de una persona: hay que decir de quién es.
+           El Excel no se elige nada: saca el inventario entero. -->
+      <div v-if="conteo.formato === 'pdf'" class="form-grid una">
         <div class="field"><label>Área</label>
-          <select v-model="conteo.area" class="select" @change="cambiarAreaConteo"><option value="">{{ conteo.formato === 'pdf' ? 'Elige el área' : 'Todas las áreas' }}</option><option v-for="a in catalogo.areas" :key="a.id" :value="a.id">{{ a.etiqueta }}</option></select>
+          <select v-model="conteo.area" class="select" @change="cambiarAreaConteo"><option value="">Elige el área</option><option v-for="a in catalogo.areas" :key="a.id" :value="a.id">{{ a.etiqueta }}</option></select>
         </div>
         <div class="field"><label>Responsable</label>
           <select v-model="conteo.responsable" class="select">
-            <option value="">{{ conteo.formato === 'pdf' ? 'Elige el responsable' : 'Todos los responsables' }}</option>
+            <option value="">Elige el responsable</option>
             <option v-for="r in responsablesConteo" :key="r.id" :value="r.id">{{ r.nombre }}</option>
           </select>
           <small v-if="responsablesConteo.length === 0" class="muted">Sin responsables en esta área.</small>
           <small v-else-if="conteo.responsable" class="muted">Sale sólo lo suyo: nada de otros responsables. Él firma la hoja.</small>
         </div>
         <div class="field" v-if="!listoParaPdf"><small class="muted">Elige el área y el responsable: una hoja de conteo no se imprime con todo mezclado.</small></div>
-        <template v-if="conteo.formato === 'pdf'">
-          <div class="field"><label>No. de conteo</label><input v-model="conteo.numero" class="input" inputmode="numeric" placeholder="Opcional" /></div>
-          <div class="field"><label>Período</label><input v-model="conteo.periodo" class="input" placeholder="En blanco = mes actual (p. ej. Septiembre / 2026)" /></div>
-        </template>
+        <div class="field"><label>No. de conteo</label><input v-model="conteo.numero" class="input" inputmode="numeric" placeholder="Opcional" /></div>
+        <div class="field"><label>Período</label><input v-model="conteo.periodo" class="input" placeholder="En blanco = mes actual (p. ej. Septiembre / 2026)" /></div>
       </div>
-      <p class="muted nota">{{ conteo.formato === 'pdf' ? 'Sólo los activos de esa área y de ese responsable, en estado ACTIVO.' : 'Mismo formato que «Control de AFT cmg rev01.xlsx»: el área que elijas, o todo el inventario.' }}</p>
+      <p class="muted nota">{{ conteo.formato === 'pdf' ? 'Sólo los activos de esa área y de ese responsable, en estado ACTIVO. Se imprime desde la vista previa.' : 'Sale todo el inventario, sin filtrar: mismo formato que «Control de AFT cmg rev01.xlsx».' }}</p>
       <template #pie>
         <button class="btn sec" @click="cerrarConteo">Cancelar</button>
         <button v-if="conteo.formato === 'pdf'" class="btn sec" :disabled="preview.cargando || !listoParaPdf" title="Ver la hoja antes de descargarla" @click="verPreview">
