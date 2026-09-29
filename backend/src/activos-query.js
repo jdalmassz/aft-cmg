@@ -1,5 +1,8 @@
 // "Área 2" o "Área 2 - COMERCIAL" si el área tiene nombre
-const AREA_ETIQUETA = `CASE WHEN ar.id IS NULL THEN NULL ELSE 'Área ' || ar.numero || COALESCE(' - ' || NULLIF(ar.nombre, ''), '') END`;
+// Etiqueta de un área: «Área 5 - ALMACEN». El alias lo pide quien consulta,
+// porque hay que unir `areas` tantas veces como valores se quieran mostrar.
+const AREA_ETIQUETA_DE = (a) => `CASE WHEN ${a}.id IS NULL THEN NULL ELSE 'Área ' || ${a}.numero || COALESCE(' - ' || NULLIF(${a}.nombre, ''), '') END`;
+const AREA_ETIQUETA = AREA_ETIQUETA_DE('ar');
 
 const { condicionSucursal } = require('./alcance');
 
@@ -71,4 +74,4 @@ function buildWhere({ q, categoria, area, ubicacion, custodio, marca, estado, ti
   return { sql: where.length ? 'WHERE ' + where.join(' AND ') : '', params, p };
 }
 
-module.exports = { ACTIVOS_COLUMNS, ACTIVOS_FROM, AREA_ETIQUETA, buildWhere, ordenUbicaciones };
+module.exports = { ACTIVOS_COLUMNS, ACTIVOS_FROM, AREA_ETIQUETA, AREA_ETIQUETA_DE, buildWhere, ordenUbicaciones };

@@ -2,9 +2,9 @@
 /**
  * ÚTILES Y HERRAMIENTAS — lo que tiene cada responsable.
  *
- * Un activo fijo está en un sitio: su área, su ubicación, y alguien responde por él.
+ * Un activo fijo está en un sitio: su área, y alguien responde por él.
  * Un útil va CON la persona —se lo lleva a su casa si hace falta— y por eso aquí no hay
- * área ni ubicación: la pregunta es siempre «¿quién lo tiene?».
+ * área: la pregunta es siempre «¿quién lo tiene?».
  *
  * Es la misma pantalla que el inventario menos las dos columnas que no existen y más
  * una, la cantidad: de un martillo hay uno, de los destornilladores hay diez y contarlos
@@ -235,7 +235,7 @@ function textoMov(m) {
     case 'CREADO': return 'Registrado' + (m.custodio_destino ? ` a nombre de ${m.custodio_destino}` : '')
     case 'CAMBIO_CUSTODIO': return 'Cambio de responsable: ' + flecha(m.custodio_origen, m.custodio_destino)
     case 'CAMBIAR_ESTADO': return 'Estado: ' + flecha(m.estado_origen, m.estado_destino)
-    case 'TRASLADO_UBICACION': return 'Traslado: ' + flecha(m.ubicacion_origen, m.ubicacion_destino)
+    case 'TRASLADO_UBICACION': return 'Cambio de área: ' + flecha(m.area_origen, m.area_destino)
     default: return m.tipo
   }
 }
@@ -535,7 +535,7 @@ onMounted(() => {
         </div>
         <div class="field"><label>Comentarios</label><textarea v-model="formulario.comentarios" class="input" rows="3"></textarea></div>
       </div>
-      <p class="muted nota">Un útil no lleva ubicación: va con su responsable.</p>
+      <p class="muted nota">Un útil no lleva área: va con su responsable.</p>
       <template #pie>
         <button class="btn sec" @click="mostrar = false">Cancelar</button>
         <button class="btn" :disabled="guardando || !formulario.descripcion" @click="guardar">{{ guardando ? 'Guardando…' : 'Registrar' }}</button>
