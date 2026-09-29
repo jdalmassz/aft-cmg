@@ -44,9 +44,11 @@ const formulario = ref({})
 const guardando = ref(false)
 
 const exportandoPdf = ref(false)
+const exportandoExcel = ref(false)
 const imprimiendo = ref(false)
 const conteoAbierto = ref(false)
-const conteo = ref({ formato: 'pdf', area: '', responsable: '', numero: '', periodo: '' })
+const conteo = ref({ area: '', responsable: '' })
+const menuExcel = ref(false)
 const qrAbierto = ref(false)
 const qrImagenes = ref([])
 const qrTotal = ref(0)
@@ -276,11 +278,10 @@ const onMovil = (e) => { enMovil.value = e.matches }
 mqMovil.addEventListener('change', onMovil)
 onBeforeUnmount(() => { clearTimeout(tBusqueda); mqMovil.removeEventListener('change', onMovil) })
 
-function abrirConteo(formato) {
+function abrirConteo() {
   const f = filtrosAplicados.value
-  // La selección se rellena con el filtro de la tabla y sólo la usa el PDF;
-  // el Excel sale entero y ni siquiera la enseña.
-  conteo.value = { ...conteo.value, formato, area: f.area || '', responsable: f.custodio || '' }
+  // La selección se rellena con el filtro de la tabla.
+  conteo.value = { area: f.area || '', responsable: f.custodio || '' }
   if (conteo.value.responsable && !responsablesConteo.value.some((r) => r.id === Number(conteo.value.responsable))) conteo.value.responsable = ''
   conteoAbierto.value = true
   refrescarPreview(true)
@@ -293,43 +294,56 @@ function cambiarAreaConteo() {
 }
 
 // Una hoja de conteo no se imprime «con todo mezclado»: hay que decir de qué área
-// y de quién es. El Excel sí puede salir entero, que es el inventario completo.
-const listoParaPdf = computed(() => conteo.value.formato !== 'pdf' || (!!conteo.value.area && !!conteo.value.responsable))
+// y de quién es.
+const listoParaPdf = computed(() => !!conteo.value.area && !!conteo.value.responsable)
 
 // Los parámetros y el nombre del fichero salen de aquí, para que la vista previa
 // y la descarga sean exactamente el mismo documento.
 function paramsConteo() {
   const c = conteo.value
-  const pdf = c.formato === 'pdf'
   const params = new URLSearchParams()
-  // El Excel es el inventario entero: no lleva selección. El PDF sí la exige.
-  if (pdf && c.area) params.set('area', c.area)
-  if (pdf && c.responsable) params.set('custodio', c.responsable)
-  if (pdf && c.numero) params.set('conteo', c.numero)
-  if (pdf && c.periodo.trim()) params.set('periodo', c.periodo.trim())
+  if (c.area) params.set('area', c.area)
+  if (c.responsable) params.set('custodio', c.responsable)
   return params
 }
 
 function nombreConteo() {
   const c = conteo.value
-  const pdf = c.formato === 'pdf'
-  const parte = (pdf ? [
+  const parte = [
     c.area ? areaDe(c.area) : '',
     c.responsable ? nome(catalogo.value.custodios, c.responsable) : ''
-  ] : []).filter(Boolean).join('-')
-  return (pdf ? 'Conteo-fisico' : 'AFT-Camaguey') + (parte ? '-' + parte.replace(/\s+/g, '_') : '') + '-' + new Date().toISOString().slice(0, 10) + (pdf ? '.pdf' : '.xlsx')
+  ].filter(Boolean).join('-')
+  return 'Conteo-fisico' + (parte ? '-' + parte.replace(/\s+/g, '_') : '') + '-' + new Date().toISOString().slice(0, 10) + '.pdf'
 }
+
+const nombreExcel = () => 'AFT-Camaguey-' + new Date().toISOString().slice(0, 10) + '.xlsx'
 
 async function exportar() {
   if (!listoParaPdf.value) return
   exportandoPdf.value = true
   try {
-    const pdf = conteo.value.formato === 'pdf'
     const qs = paramsConteo().toString()
-    await api.download('/api/activos/export' + (pdf ? '/pdf' : '') + (qs ? '?' + qs : ''), nombreConteo())
-    ok(pdf ? 'Hoja de conteo físico exportada a PDF' : 'Inventario exportado a Excel')
+    await api.download('/api/activos/export/pdf' + (qs ? '?' + qs : ''), nombreConteo())
+    ok('Hoja de conteo físico exportada a PDF')
     cerrarConteo()
   } catch (e) { err(e.message) } finally { exportandoPdf.value = false }
+}
+
+// Al darle a «Excel» se despliegan las dos cosas que se pueden hacer con el
+// inventario entero: llevarlo impreso o bajarlo en .xlsx. Ninguna de las dos
+// pide elegir nada.
+function elegirExcel(accion) {
+  menuExcel.value = false
+  accion()
+}
+
+async function descargarExcel() {
+  if (exportandoExcel.value) return
+  exportandoExcel.value = true
+  try {
+    await api.download('/api/activos/export', nombreExcel())
+    ok('Inventario exportado a Excel')
+  } catch (e) { err(e.message) } finally { exportandoExcel.value = false }
 }
 
 // El .xlsx no lo imprime el navegador: eso lo hace la hoja de cálculo. Aquí se
@@ -366,14 +380,12 @@ async function previsualizar() {
   await preview.abrir('/api/activos/export/pdf' + (qs ? '?' + qs : ''))
 }
 
-// `forzar` = pedirla siempre (al abrir el cajón, al pasar a PDF o con el botón).
-// Sin forzar sólo se refresca si la hoja sigue abierta y cambiaron los
-// parámetros: si no, escribir en «Período» reharía el PDF en cada tecla, y un
-// cambio no debe reabrirla si la persona la acababa de cerrar.
+// `forzar` = pedirla siempre (al abrir el cajón o con el botón). Sin forzar sólo
+// se refresca si la hoja sigue abierta y cambiaron los parámetros: si no, un
+// cambio no debería reabrirla si la persona la acababa de cerrar.
 function refrescarPreview(forzar) {
-  // En Excel no hay hoja que enseñar: si estaba abierta, se cierra.
-  // Y sin área + responsable no se pide nada: la hoja no existe todavía.
-  if (conteo.value.formato !== 'pdf' || !listoParaPdf.value) { qsPreview = ''; preview.cerrar(); return }
+  // Sin área + responsable no se pide nada: la hoja no existe todavía.
+  if (!listoParaPdf.value) { qsPreview = ''; preview.cerrar(); return }
   if (enMovil.value || !conteoAbierto.value) return
   if (!forzar && !preview.abierta) return
   const qs = paramsConteo().toString()
@@ -391,12 +403,6 @@ onBeforeUnmount(() => clearTimeout(tPreview))
 function cerrarConteo() {
   conteoAbierto.value = false
   preview.cerrar()
-}
-
-function ponerFormato(f) {
-  conteo.value.formato = f
-  if (f !== 'pdf') { qsPreview = ''; preview.cerrar(); return }
-  refrescarPreview(true)
 }
 
 // Botón «Vista previa»: se habilita en cuanto hay área y responsable.
@@ -486,8 +492,15 @@ onMounted(() => {
       </div>
       <span class="btns">
         <button class="btn sec sm" :class="{ on: filasCompactas }" @click="toggleCompacto" :title="filasCompactas ? 'Filas normales' : 'Filas compactas (ver más registros)'"><AppIcon name="rows" :size="15" /> <span class="hbt">Compacto</span></button>
-        <button class="btn sec sm" @click="abrirConteo('excel')" title="Inventario entero en Excel, sin elegir nada"><AppIcon name="file" :size="15" /> Excel</button>
-        <button class="btn sec sm" :disabled="exportandoPdf || !total" @click="abrirConteo('pdf')" title="Hoja de conteo físico en PDF: hay que elegir área y responsable"><AppIcon name="file" :size="15" /> PDF</button>
+        <span class="menu">
+          <button class="btn sec sm" :aria-expanded="menuExcel" title="Inventario entero: imprimir o bajarlo en Excel" @click="menuExcel = !menuExcel"><AppIcon name="file" :size="15" /> Excel <AppIcon name="chevron-down" :size="13" /></button>
+          <div v-if="menuExcel" class="menu-fondo" @click="menuExcel = false"></div>
+          <div v-if="menuExcel" class="menu-lista">
+            <button class="menu-op" :disabled="imprimiendo" @click="elegirExcel(imprimirListado)"><AppIcon name="printer" :size="15" /> {{ imprimiendo ? 'Preparando…' : 'Imprimir' }}</button>
+            <button class="menu-op" :disabled="exportandoExcel" @click="elegirExcel(descargarExcel)"><AppIcon name="file" :size="15" /> {{ exportandoExcel ? 'Generando…' : 'Descargar .xlsx' }}</button>
+          </div>
+        </span>
+        <button class="btn sec sm" :disabled="exportandoPdf || !total" @click="abrirConteo()" title="Hoja de conteo físico en PDF: hay que elegir área y responsable"><AppIcon name="file" :size="15" /> PDF</button>
         <button class="btn sec sm" :disabled="!total" @click="generarEtiquetas" title="Generar etiquetas QR de los activos filtrados"><AppIcon name="qr" :size="15" /> QR</button>
         <button class="btn sm" @click="abrirNuevo"><AppIcon name="plus" :size="15" /> Nuevo activo</button>
       </span>
@@ -693,14 +706,9 @@ onMounted(() => {
       </template>
     </Drawer>
 
-    <Drawer :open="conteoAbierto" :titulo="conteo.formato === 'pdf' ? 'Hoja de conteo físico' : 'Exportar a Excel'" :subtitulo="conteo.formato === 'pdf' ? 'Por área y responsable' : 'Todo el inventario'" @close="cerrarConteo">
-      <div class="formato">
-        <button class="btn sec sm" :class="{ on: conteo.formato === 'pdf' }" @click="ponerFormato('pdf')">PDF · conteo físico</button>
-        <button class="btn sec sm" :class="{ on: conteo.formato === 'excel' }" @click="ponerFormato('excel')">Excel · todo</button>
-      </div>
-      <!-- El PDF es una hoja de una persona: hay que decir de quién es.
-           El Excel no se elige nada: saca el inventario entero. -->
-      <div v-if="conteo.formato === 'pdf'" class="form-grid una">
+    <Drawer :open="conteoAbierto" titulo="Hoja de conteo físico" subtitulo="Por área y responsable" @close="cerrarConteo">
+      <!-- La hoja es de una sola persona: hay que decir de quién es. -->
+      <div class="form-grid una">
         <div class="field"><label>Área</label>
           <select v-model="conteo.area" class="select" @change="cambiarAreaConteo"><option value="">Elige el área</option><option v-for="a in catalogo.areas" :key="a.id" :value="a.id">{{ a.etiqueta }}</option></select>
         </div>
@@ -713,19 +721,13 @@ onMounted(() => {
           <small v-else-if="conteo.responsable" class="muted">Sale sólo lo suyo: nada de otros responsables. Él firma la hoja.</small>
         </div>
         <div class="field" v-if="!listoParaPdf"><small class="muted">Elige el área y el responsable: una hoja de conteo no se imprime con todo mezclado.</small></div>
-        <div class="field"><label>No. de conteo</label><input v-model="conteo.numero" class="input" inputmode="numeric" placeholder="Opcional" /></div>
-        <div class="field"><label>Período</label><input v-model="conteo.periodo" class="input" placeholder="En blanco = mes actual (p. ej. Septiembre / 2026)" /></div>
       </div>
-      <p class="muted nota">{{ conteo.formato === 'pdf' ? 'Sólo los activos de esa área y de ese responsable, en estado ACTIVO. Se imprime desde la vista previa.' : 'Sale todo el inventario, sin filtrar: mismo formato que «Control de AFT cmg rev01.xlsx». «Imprimir» abre una hoja limpia con el listado.' }}</p>
       <template #pie>
         <button class="btn sec" @click="cerrarConteo">Cancelar</button>
-        <button v-if="conteo.formato === 'pdf'" class="btn sec" :disabled="preview.cargando || !listoParaPdf" title="Ver la hoja antes de descargarla" @click="verPreview">
+        <button class="btn sec" :disabled="preview.cargando || !listoParaPdf" title="Ver la hoja antes de descargarla" @click="verPreview">
           <AppIcon name="eye" :size="15" /> {{ preview.cargando ? 'Generando…' : 'Vista previa' }}
         </button>
-        <button v-if="conteo.formato !== 'pdf'" class="btn sec" :disabled="imprimiendo" title="Listado en papel o en PDF, sin filtros" @click="imprimirListado">
-          <AppIcon name="printer" :size="15" /> {{ imprimiendo ? 'Preparando…' : 'Imprimir' }}
-        </button>
-        <button class="btn" :disabled="exportandoPdf || !listoParaPdf" @click="exportar"><AppIcon name="file" :size="15" /> {{ exportandoPdf ? 'Generando…' : (conteo.formato === 'pdf' ? 'Descargar PDF' : 'Descargar Excel') }}</button>
+        <button class="btn" :disabled="exportandoPdf || !listoParaPdf" @click="exportar"><AppIcon name="file" :size="15" /> {{ exportandoPdf ? 'Generando…' : 'Descargar PDF' }}</button>
       </template>
     </Drawer>
 
@@ -813,8 +815,22 @@ table.tbl.compact th, table.tbl.compact td { padding: 5px 9px; font-size: 12.5px
   overflow: hidden; display: grid; place-items: center;
 }
 .preview-iframe { width: 100%; height: 100%; border: 0; background: #fff; }
-.formato { display: flex; gap: 6px; margin-bottom: 14px; }
-.formato .btn { flex: 1; justify-content: center; }
+/* Menú del botón Excel: se despliega bajo el botón y se cierra tocando fuera. */
+.menu { position: relative; z-index: 30; display: inline-flex; }
+.menu-fondo { position: fixed; inset: 0; z-index: 1; }
+.menu-lista {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 2;
+  min-width: 190px; padding: 6px; display: flex; flex-direction: column; gap: 2px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow-lg);
+}
+.menu-op {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 10px; border: 0; background: none; border-radius: 8px;
+  font-size: 13px; color: var(--text); text-align: left; cursor: pointer;
+}
+.menu-op:hover:not(:disabled) { background: #eef4ff; }
+.menu-op:disabled { opacity: .6; cursor: default; }
 
 .det-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px 18px; }
 .det { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
