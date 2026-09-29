@@ -108,20 +108,40 @@ function eliminarDrawer() {
 const ESTADOS = ['ACTIVO', 'BAJA']
 
 
-// Los responsables que se pueden elegir en el cajón: los que tienen activos en el
-// área elegida; sin área, todos. Con uno elegido, ese es el que firma la hoja.
-const responsablesConteo = computed(() => {
+// Quién se puede elegir en un área: los que ya responden de activos en ella.
+// Sin área elegida no hay lista: primero se dice de qué área hablamos.
+function responsablesDe(areaId) {
   const todos = catalogo.value.responsablesPorArea || []
-  const lista = conteo.value.area
-    ? todos.filter((r) => r.area_id === Number(conteo.value.area))
-    : todos
+  const lista = areaId ? todos.filter((r) => r.area_id === Number(areaId)) : []
   const ya = new Map()
   for (const r of lista) if (!ya.has(r.custodio_id)) ya.set(r.custodio_id, r.nombre)
   return [...ya.entries()].map(([id, nombre]) => ({ id, nombre })).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+}
+
+const responsablesConteo = computed(() => responsablesDe(conteo.value.area))
+const responsablesFiltro = computed(() => responsablesDe(fArea.value))
+
+// En el formulario se deja a la vista el responsable que ya trae el activo, por
+// si no está en la lista del área: cambiar de área sí lo quita.
+const responsablesForm = computed(() => {
+  const lista = responsablesDe(formulario.value.area_id)
+  const actual = formulario.value.custodio_id
+  if (actual && !lista.some((r) => r.id === Number(actual))) lista.push({ id: Number(actual), nombre: nome(catalogo.value.custodios, actual) })
+  return lista
 })
 
+// Cambiar de área deja el responsable de fuera: en otra área no le toca.
+function fueraDeArea(lista, id) {
+  return id && !lista.some((r) => r.id === Number(id))
+}
+
 function cambiarArea() {
+  if (fueraDeArea(responsablesFiltro.value, fResponsable.value)) fResponsable.value = ''
   aplicar()
+}
+
+function cambiarAreaForm() {
+  if (fueraDeArea(responsablesForm.value, formulario.value.custodio_id)) formulario.value.custodio_id = ''
 }
 
 const nome = (lista, id) => lista.find((x) => x.id === Number(id))?.nombre || ''
@@ -510,7 +530,7 @@ onMounted(() => {
       <input v-model="q" class="input" placeholder="Buscar por descripción, modelo, código…" @keyup.enter="aplicar" />
       <select v-model="fCategoria" class="select" @change="aplicar"><option value="">Categoría</option><option v-for="c in catalogo.categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
       <select v-model="fArea" class="select" @change="cambiarArea"><option value="">Área</option><option v-for="a in catalogo.areas" :key="a.id" :value="a.id">{{ a.etiqueta }}</option></select>
-      <select v-model="fResponsable" class="select" @change="aplicar"><option value="">Responsable</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
+      <select v-model="fResponsable" class="select" :disabled="!fArea" @change="aplicar"><option value="">{{ fArea ? 'Responsable' : 'Primero elige el área' }}</option><option v-for="r in responsablesFiltro" :key="r.id" :value="r.id">{{ r.nombre }}</option></select>
       <select v-model="fEstado" class="select" @change="aplicar"><option value="">Estado</option><option v-for="e in ESTADOS" :key="e" :value="e">{{ e }}</option></select>
       <span class="btns">
         <button class="btn sm" @click="aplicar">Filtrar</button>
@@ -627,10 +647,10 @@ onMounted(() => {
               <select v-model="formulario.categoria_id" class="select"><option value="">—</option><option v-for="c in catalogo.categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
             </div>
             <div class="field"><label>Área</label>
-              <select v-model="formulario.area_id" class="select"><option value="">—</option><option v-for="a in catalogo.areas" :key="a.id" :value="a.id">{{ a.etiqueta }}</option></select>
+              <select v-model="formulario.area_id" class="select" @change="cambiarAreaForm"><option value="">—</option><option v-for="a in catalogo.areas" :key="a.id" :value="a.id">{{ a.etiqueta }}</option></select>
             </div>
             <div class="field"><label>Responsable</label>
-              <select v-model="formulario.custodio_id" class="select"><option value="">—</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
+              <select v-model="formulario.custodio_id" class="select" :disabled="!formulario.area_id" :title="formulario.area_id ? '' : 'Primero elige el área'"><option value="">{{ formulario.area_id ? '—' : 'Primero elige el área' }}</option><option v-for="r in responsablesForm" :key="r.id" :value="r.id">{{ r.nombre }}</option></select>
             </div>
             <div class="field full"><small class="muted">El área y el responsable deciden dónde queda el activo. Si esa pareja todavía no existe, se guarda sola.</small></div>
             <div class="field"><label>Fecha de adquisición</label><input v-model="formulario.fecha_adquisicion" class="input" placeholder="dd-mm-año" /></div>
@@ -689,10 +709,10 @@ onMounted(() => {
           <select v-model="formulario.categoria_id" class="select"><option value="">—</option><option v-for="c in catalogo.categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
         </div>
         <div class="field"><label>Área</label>
-          <select v-model="formulario.area_id" class="select"><option value="">—</option><option v-for="a in catalogo.areas" :key="a.id" :value="a.id">{{ a.etiqueta }}</option></select>
+          <select v-model="formulario.area_id" class="select" @change="cambiarAreaForm"><option value="">—</option><option v-for="a in catalogo.areas" :key="a.id" :value="a.id">{{ a.etiqueta }}</option></select>
         </div>
         <div class="field"><label>Responsable</label>
-          <select v-model="formulario.custodio_id" class="select"><option value="">—</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
+          <select v-model="formulario.custodio_id" class="select" :disabled="!formulario.area_id" :title="formulario.area_id ? '' : 'Primero elige el área'"><option value="">{{ formulario.area_id ? '—' : 'Primero elige el área' }}</option><option v-for="r in responsablesForm" :key="r.id" :value="r.id">{{ r.nombre }}</option></select>
         </div>
         <div class="field full"><small class="muted">El área y el responsable deciden dónde queda el activo. Si esa pareja todavía no existe, se guarda sola.</small></div>
         <div class="field"><label>Fecha de adquisición</label><input v-model="formulario.fecha_adquisicion" class="input" placeholder="dd-mm-año" /></div>
@@ -713,11 +733,12 @@ onMounted(() => {
           <select v-model="conteo.area" class="select" @change="cambiarAreaConteo"><option value="">Elige el área</option><option v-for="a in catalogo.areas" :key="a.id" :value="a.id">{{ a.etiqueta }}</option></select>
         </div>
         <div class="field"><label>Responsable</label>
-          <select v-model="conteo.responsable" class="select">
-            <option value="">Elige el responsable</option>
+          <select v-model="conteo.responsable" class="select" :disabled="!conteo.area">
+            <option value="">{{ conteo.area ? 'Elige el responsable' : 'Primero elige el área' }}</option>
             <option v-for="r in responsablesConteo" :key="r.id" :value="r.id">{{ r.nombre }}</option>
           </select>
-          <small v-if="responsablesConteo.length === 0" class="muted">Sin responsables en esta área.</small>
+          <small v-if="!conteo.area" class="muted">Primero elige el área: sólo se enseñan sus responsables.</small>
+          <small v-else-if="responsablesConteo.length === 0" class="muted">Sin responsables en esta área.</small>
           <small v-else-if="conteo.responsable" class="muted">Sale sólo lo suyo: nada de otros responsables. Él firma la hoja.</small>
         </div>
         <div class="field" v-if="!listoParaPdf"><small class="muted">Elige el área y el responsable: una hoja de conteo no se imprime con todo mezclado.</small></div>
