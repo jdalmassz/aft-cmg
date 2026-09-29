@@ -41,9 +41,11 @@ const formulario = ref({})
 const guardando = ref(false)
 
 const exportando = ref(false)
+const exportandoExcel = ref(false)
 const imprimiendo = ref(false)
+const menuExcel = ref(false)
 const exportAbierto = ref(false)
-const exportar_ = ref({ formato: 'pdf', responsable: '', numero: '', periodo: '' })
+const exportar_ = ref({ responsable: '' })
 
 const drawerAbierto = ref(false)
 const utilSel = ref(null)
@@ -253,8 +255,8 @@ const onMovil = (e) => { enMovil.value = e.matches }
 mqMovil.addEventListener('change', onMovil)
 onBeforeUnmount(() => { clearTimeout(tBusqueda); mqMovil.removeEventListener('change', onMovil) })
 
-function abrirExport(formato) {
-  exportar_.value = { ...exportar_.value, formato, responsable: filtrosAplicados.value.custodio || '' }
+function abrirExport() {
+  exportar_.value = { responsable: filtrosAplicados.value.custodio || '' }
   exportAbierto.value = true
   refrescarPreview(true)
 }
@@ -262,20 +264,33 @@ function abrirExport(formato) {
 // Los parámetros y el nombre del fichero salen de aquí, para que la vista previa
 // y la descarga sean exactamente el mismo documento.
 function paramsExport() {
-  const c = exportar_.value
-  const pdf = c.formato === 'pdf'
   const params = new URLSearchParams()
-  // El Excel es el listado entero: no lleva selección. Sólo el PDF se acota.
-  if (pdf && c.responsable) params.set('custodio', c.responsable)
-  if (pdf && c.numero) params.set('conteo', c.numero)
-  if (pdf && c.periodo.trim()) params.set('periodo', c.periodo.trim())
+  if (exportar_.value.responsable) params.set('custodio', exportar_.value.responsable)
   return params
 }
 
 function nombreExport() {
   const c = exportar_.value
-  const quien = c.formato === 'pdf' && c.responsable ? '-' + nome(catalogo.value.custodios, c.responsable).replace(/\s+/g, '_') : ''
-  return 'Utiles-y-herramientas' + quien + '-' + new Date().toISOString().slice(0, 10) + (c.formato === 'pdf' ? '.pdf' : '.xlsx')
+  const quien = c.responsable ? '-' + nome(catalogo.value.custodios, c.responsable).replace(/\s+/g, '_') : ''
+  return 'Utiles-y-herramientas' + quien + '-' + new Date().toISOString().slice(0, 10) + '.pdf'
+}
+
+const nombreExcel = () => 'Utiles-y-herramientas-' + new Date().toISOString().slice(0, 10) + '.xlsx'
+
+// Al darle a «Excel» se despliegan las dos cosas que se pueden hacer con el
+// listado entero: llevarlo impreso o bajarlo en .xlsx. Ninguna pide elegir nada.
+function elegirExcel(accion) {
+  menuExcel.value = false
+  accion()
+}
+
+async function descargarExcel() {
+  if (exportandoExcel.value) return
+  exportandoExcel.value = true
+  try {
+    await api.download('/api/utiles/export', nombreExcel())
+    ok('Listado exportado a Excel')
+  } catch (e) { err(e.message) } finally { exportandoExcel.value = false }
 }
 
 // El .xlsx no lo imprime el navegador: esto imprime el listado entero, con las
@@ -300,9 +315,8 @@ async function imprimirListado() {
 async function descargar() {
   exportando.value = true
   try {
-    const pdf = exportar_.value.formato === 'pdf'
     const qs = paramsExport().toString()
-    await api.download('/api/utiles/export' + (pdf ? '/pdf' : '') + (qs ? '?' + qs : ''), nombreExport())
+    await api.download('/api/utiles/export/pdf' + (qs ? '?' + qs : ''), nombreExport())
     cerrarExport()
   } catch (e) { err(e.message) } finally { exportando.value = false }
 }
@@ -322,12 +336,9 @@ async function previsualizar() {
 }
 
 // `forzar` = pedirla siempre (al abrir el cajón o con el botón). Sin forzar sólo
-// se refresca si la hoja sigue abierta y cambiaron los parámetros: si no,
-// escribir en «Período» reharía el PDF en cada tecla, y un cambio no debe
-// reabrirla si la persona la acababa de cerrar.
+// se refresca si la hoja sigue abierta y cambiaron los parámetros: si no, un
+// cambio no debería reabrirla si la persona la acababa de cerrar.
 function refrescarPreview(forzar) {
-  // En Excel no hay hoja que enseñar: si estaba abierta, se cierra.
-  if (exportar_.value.formato !== 'pdf') { qsPreview = ''; preview.cerrar(); return }
   if (enMovil.value || !exportAbierto.value) return
   if (!forzar && !preview.abierta) return
   const qs = paramsExport().toString()
@@ -369,8 +380,15 @@ onMounted(() => {
         <p class="muted">{{ total }} registro(s) — lo que tiene cada responsable · <span class="hint">toca una fila para ver el detalle</span></p>
       </div>
       <span class="btns">
-        <button class="btn sec sm" @click="abrirExport('excel')" title="Listado entero en Excel, sin elegir nada"><AppIcon name="file" :size="15" /> Excel</button>
-        <button class="btn sec sm" :disabled="!total" @click="abrirExport('pdf')" title="Hoja de conteo en PDF, por responsable"><AppIcon name="file" :size="15" /> PDF</button>
+        <span class="menu">
+          <button class="btn sec sm" :aria-expanded="menuExcel" title="Listado entero: imprimir o bajarlo en Excel" @click="menuExcel = !menuExcel"><AppIcon name="file" :size="15" /> Excel <AppIcon name="chevron-down" :size="13" /></button>
+          <div v-if="menuExcel" class="menu-fondo" @click="menuExcel = false"></div>
+          <div v-if="menuExcel" class="menu-lista">
+            <button class="menu-op" :disabled="imprimiendo" @click="elegirExcel(imprimirListado)"><AppIcon name="printer" :size="15" /> {{ imprimiendo ? 'Preparando…' : 'Imprimir' }}</button>
+            <button class="menu-op" :disabled="exportandoExcel" @click="elegirExcel(descargarExcel)"><AppIcon name="file" :size="15" /> {{ exportandoExcel ? 'Generando…' : 'Descargar .xlsx' }}</button>
+          </div>
+        </span>
+        <button class="btn sec sm" :disabled="!total" @click="abrirExport()" title="Hoja de conteo en PDF, por responsable"><AppIcon name="file" :size="15" /> PDF</button>
         <button class="btn sm" @click="abrirNuevo"><AppIcon name="plus" :size="15" /> Nuevo útil</button>
       </span>
     </div>
@@ -543,27 +561,21 @@ onMounted(() => {
     </Drawer>
 
     <!-- Exportar -->
-    <Drawer :open="exportAbierto" :titulo="exportar_.formato === 'pdf' ? 'Hoja de conteo (PDF)' : 'Listado (Excel)'" :ancho="380" @close="cerrarExport">
-      <!-- El PDF se puede acotar a una persona; el Excel es el listado entero. -->
-      <div v-if="exportar_.formato === 'pdf'" class="form">
+    <Drawer :open="exportAbierto" titulo="Hoja de conteo (PDF)" subtitulo="Por responsable" :ancho="380" @close="cerrarExport">
+      <!-- El PDF se puede acotar a una persona. -->
+      <div class="form">
         <div class="field"><label>Responsable</label>
           <select v-model="exportar_.responsable" class="select"><option value="">Todos los responsables</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
           <small v-if="exportar_.responsable" class="muted">Sale sólo lo suyo. Si son varios, cada uno en su página con su firma.</small>
           <small v-else class="muted">Salen todos, cada uno en su página con su firma.</small>
         </div>
-        <div class="field"><label>No. de conteo</label><input v-model="exportar_.numero" class="input" inputmode="numeric" placeholder="Opcional" /></div>
-        <div class="field"><label>Período</label><input v-model="exportar_.periodo" class="input" placeholder="En blanco = mes actual" /></div>
       </div>
-      <p class="muted nota">{{ exportar_.formato === 'pdf' ? 'Sólo los que están en estado ACTIVO, agrupados por responsable. Se imprime desde la vista previa.' : 'Sale todo el listado, sin filtrar: mismas columnas que el inventario, con la cantidad. «Imprimir» abre una hoja limpia con el listado.' }}</p>
       <template #pie>
         <button class="btn sec" @click="cerrarExport">Cancelar</button>
-        <button v-if="exportar_.formato === 'pdf'" class="btn sec" :disabled="preview.cargando || !total" title="Ver la hoja antes de descargarla" @click="verPreview">
+        <button class="btn sec" :disabled="preview.cargando || !total" title="Ver la hoja antes de descargarla" @click="verPreview">
           <AppIcon name="eye" :size="15" /> {{ preview.cargando ? 'Generando…' : 'Vista previa' }}
         </button>
-        <button v-if="exportar_.formato !== 'pdf'" class="btn sec" :disabled="imprimiendo" title="Listado en papel o en PDF, sin filtros" @click="imprimirListado">
-          <AppIcon name="printer" :size="15" /> {{ imprimiendo ? 'Preparando…' : 'Imprimir' }}
-        </button>
-        <button class="btn" :disabled="exportando" @click="descargar"><AppIcon name="file" :size="15" /> {{ exportando ? 'Generando…' : 'Descargar' }}</button>
+        <button class="btn" :disabled="exportando" @click="descargar"><AppIcon name="file" :size="15" /> {{ exportando ? 'Generando…' : 'Descargar PDF' }}</button>
       </template>
     </Drawer>
 
@@ -640,6 +652,23 @@ table.tbl .num { text-align: right; font-variant-numeric: tabular-nums; }
 .det > span { font-size: 10.5px; color: var(--muted); text-transform: uppercase; font-weight: 700; letter-spacing: 0.3px; }
 .det > b { font-size: 13px; font-weight: 600; word-break: break-word; }
 .det.wide { grid-column: 1 / -1; }
+
+/* Menú del botón Excel: se despliega bajo el botón y se cierra tocando fuera. */
+.menu { position: relative; z-index: 30; display: inline-flex; }
+.menu-fondo { position: fixed; inset: 0; z-index: 1; }
+.menu-lista {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 2;
+  min-width: 190px; padding: 6px; display: flex; flex-direction: column; gap: 2px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow-lg);
+}
+.menu-op {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 10px; border: 0; background: none; border-radius: 8px;
+  font-size: 13px; color: var(--text); text-align: left; cursor: pointer;
+}
+.menu-op:hover:not(:disabled) { background: #eef4ff; }
+.menu-op:disabled { opacity: .6; cursor: default; }
 
 .hist { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
 .hist li { display: flex; flex-direction: column; gap: 2px; border-left: 2px solid #c9dcff; padding-left: 10px; }
