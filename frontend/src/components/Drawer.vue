@@ -122,13 +122,23 @@ function soltar() {
 .dw-fade-enter-active, .dw-fade-leave-active { transition: opacity 0.2s; }
 .dw-fade-enter-from, .dw-fade-leave-to { opacity: 0; }
 
-/* Dos cajones a la vez: la vista previa no tapa el de opciones, se queda pegada
-   a su izquierda y ocupa el resto de la pantalla (--dw-pegado = ancho del cajón
-   de opciones). En móvil no cabe al lado: allí sigue abriéndose encima. */
-@media (min-width: 641px) {
+/* Tres tamaños de pantalla para la vista previa de la hoja:
+   - Pantalla grande (≥1024): cabe al lado del cajón de opciones, se queda pegada
+     a su izquierda y ocupa el resto (--dw-pegado = ancho del cajón de opciones).
+   - Pantalla mediana (641–1023): no cabe al lado, se abre a todo el ancho
+     encima; el cajón de opciones queda detrás y se recupera cerrando la hoja.
+   - Móvil (≤640): hoja desde abajo, a pantalla completa. */
+@media (min-width: 1024px) {
   .dw.preview-drawer { left: 0; right: var(--dw-pegado, 0px); width: auto; max-width: none; }
   .dw.preview-drawer.dw-enter-from, .dw.preview-drawer.dw-leave-to { transform: translateX(-100%); }
 }
+@media (min-width: 641px) and (max-width: 1023px) {
+  .dw.preview-drawer { left: 0; right: 0; width: auto; max-width: none; }
+}
+
+/* El cuerpo de la vista previa no rueda: la hoja llena lo que hay y ya se
+   desplaza dentro del propio visor del PDF. */
+.preview-drawer .dw-body { display: flex; flex-direction: column; overflow: hidden; padding: 12px; }
 
 @media (max-width: 640px) {
   .dw {
@@ -139,5 +149,7 @@ function soltar() {
   .dw-handle { display: block; width: 40px; height: 4px; border-radius: 4px; background: #cbd5e1; margin: 8px auto 0; }
   .dw-head { padding-top: 10px; }
   .dw-enter-from, .dw-leave-to { transform: translateY(100%); }
+  /* La hoja es lo que importa: en móvil se lleva toda la pantalla. */
+  .dw.preview-drawer { top: 0; bottom: 0; height: auto; max-height: none; border-radius: 0; }
 }
 </style>

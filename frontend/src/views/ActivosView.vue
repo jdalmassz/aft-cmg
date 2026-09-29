@@ -831,7 +831,7 @@ table.tbl.compact th, table.tbl.compact td { padding: 5px 9px; font-size: 12.5px
 
 /* Vista previa del PDF: la hoja entera, con su fondo gris de papel. */
 .preview-caja {
-  height: calc(100dvh - 210px); min-height: 300px;
+  flex: 1; min-height: 0;
   background: #e2e8f0; border: 1px solid var(--border); border-radius: 10px;
   overflow: hidden; display: grid; place-items: center;
 }
