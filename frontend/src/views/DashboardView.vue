@@ -101,10 +101,10 @@ async function exportarExcel() {
         </div>
 
         <div class="card pane">
-          <h3>Por ubicación</h3>
+          <h3>Por área</h3>
           <div class="bars">
-            <div v-for="u in data.porUbicacion" :key="u.nombre" class="bar-row">
-              <div class="bar-lbl">{{ u.nombre.toLowerCase() }}</div>
+            <div v-for="u in data.porArea" :key="u.nombre" class="bar-row">
+              <div class="bar-lbl">{{ u.nombre }}</div>
               <div class="bar-track"><div class="bar-fill alt" :style="{ width: (u.cantidad / Math.max(data.total,1) * 100) + '%' }"></div></div>
               <div class="bar-n">{{ u.cantidad }}</div>
             </div>
@@ -116,11 +116,11 @@ async function exportarExcel() {
         <h3>Últimos agregados</h3>
         <div class="table-wrap">
           <table class="tbl">
-            <thead><tr><th>Descripción</th><th>Marca</th><th>Ubicación</th><th>Responsable</th><th>Valor USD</th></tr></thead>
+            <thead><tr><th>Descripción</th><th>Marca</th><th>Área</th><th>Responsable</th><th>Valor USD</th></tr></thead>
             <tbody>
               <tr v-for="a in data.recientes" :key="a.id">
                 <td>{{ a.descripcion }}</td><td>{{ a.marca || '—' }}</td>
-                <td>{{ a.ubicacion || '—' }}</td><td>{{ a.custodio || '—' }}</td>
+                <td>{{ a.area || '—' }}</td><td>{{ a.custodio || '—' }}</td>
                 <td>${{ formatMoneda(a.valor_usd) }}</td>
               </tr>
             </tbody>

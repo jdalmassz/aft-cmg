@@ -594,16 +594,18 @@ async function dashboard(req, res, next) {
     const qUti = nuevo();
     const cUti = alcance.condicionSucursal(req.user, qUti.p);
 
-    const [total, porCategoria, porUbicacion, porEstado, valores, recientes, custodiosTop, utiles] = await Promise.all([
+    const [total, porCategoria, porArea, porEstado, valores, recientes, custodiosTop, utiles] = await Promise.all([
       dbp.query(`SELECT COUNT(*)::int AS total FROM activos a WHERE a.tipo = 'AFT'${cTotal ? ` AND ${cTotal}` : ''}`, qTotal.params),
       dbp.query(`
         SELECT c.nombre, COUNT(a.id)::int AS cantidad
         FROM categorias c LEFT JOIN activos a ON a.categoria_id = c.id AND a.tipo = 'AFT'${cCat ? ` AND ${cCat}` : ''}
         GROUP BY c.id, c.nombre ORDER BY cantidad DESC`, qCat.params),
       dbp.query(`
-        SELECT u.nombre, COUNT(a.id)::int AS cantidad
-        FROM ubicaciones u LEFT JOIN activos a ON a.ubicacion_id = u.id AND a.estado = 'ACTIVO' AND a.tipo = 'AFT'${cUbi ? ` AND ${cUbi}` : ''}
-        GROUP BY u.id, u.nombre ORDER BY ${ordenUbicaciones('u.')}`, qUbi.params),
+        SELECT ${AREA_ETIQUETA} AS nombre, COUNT(a.id)::int AS cantidad
+        FROM areas ar
+        LEFT JOIN ubicaciones u ON u.area_id = ar.id
+        LEFT JOIN activos a ON a.ubicacion_id = u.id AND a.estado = 'ACTIVO' AND a.tipo = 'AFT'${cUbi ? ` AND ${cUbi}` : ''}
+        GROUP BY ar.id, ar.numero ORDER BY ar.numero`, qUbi.params),
       dbp.query(`SELECT estado, COUNT(*)::int AS cantidad FROM activos a WHERE a.tipo = 'AFT'${cEst ? ` AND ${cEst}` : ''} GROUP BY estado`, qEst.params),
       dbp.query(`SELECT COALESCE(SUM(valor_usd),0)::numeric AS valor_usd, COALESCE(SUM(valor_cup),0)::numeric AS valor_cup, COALESCE(SUM(valor_usd) FILTER (WHERE valor_cup IS NULL),0)::numeric AS valor_usd_sin_cup FROM activos a WHERE a.estado = ${estadoParam} AND a.tipo = 'AFT'${cVal ? ` AND ${cVal}` : ''}`, qVal.params),
       dbp.query(`SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} WHERE a.tipo = 'AFT'${cRec ? ` AND ${cRec}` : ''} ORDER BY a.created_at DESC LIMIT 5`, qRec.params),
@@ -624,7 +626,7 @@ async function dashboard(req, res, next) {
     return res.json({
       total: total.rows[0].total,
       porCategoria: porCategoria.rows,
-      porUbicacion: porUbicacion.rows,
+      porArea: porArea.rows,
       porEstado: porEstado.rows,
       // El total en CUP: lo que ya esté en valor_cup + los activos que sólo
       // tienen dólares, convertidos con la tasa. Sólo se convierten los que no

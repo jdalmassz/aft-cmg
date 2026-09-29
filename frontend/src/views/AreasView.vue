@@ -8,24 +8,21 @@ import { invalidarCatalogo } from '../catalogo'
 import { confirmar } from '../confirm'
 
 const areas = ref([])
-const ubicaciones = ref([])
+// El servidor devuelve el detalle de cada área: no se enseña, sólo sirve para
+// contar cuántos responsables y cuántos activos lleva cada área.
+const responsables = ref([])
 const loading = ref(true)
 const error = ref('')
 
-// Un solo cajón para las cuatro ediciones: tipo 'area' | 'ubicacion'
 const cajon = ref(null)
-const form = ref({ numero: '', nombre: '', area_id: '' })
+const form = ref({ numero: '', nombre: '' })
 const guardando = ref(false)
 const errForm = ref('')
 
-const grupos = computed(() => {
-  const g = areas.value.map((a) => ({ ...a, ubicaciones: ubicaciones.value.filter((u) => u.area_id === a.id) }))
-  const sueltas = ubicaciones.value.filter((u) => !u.area_id)
-  if (sueltas.length) g.push({ id: null, etiqueta: 'Sin área asignada', ubicaciones: sueltas })
-  return g
-})
-
-const totalActivos = (ubs) => ubs.reduce((s, u) => s + u.activos, 0)
+const grupos = computed(() =>
+  areas.value.map((a) => ({ ...a, responsables: responsables.value.filter((u) => u.area_id === a.id) }))
+)
+const totalActivos = (rs) => rs.reduce((s, r) => s + r.activos, 0)
 
 async function cargar() {
   loading.value = true
@@ -33,57 +30,44 @@ async function cargar() {
   try {
     const r = await api.get('/api/admin/areas')
     areas.value = r.areas
-    ubicaciones.value = r.ubicaciones
+    responsables.value = r.ubicaciones
   } catch (e) { error.value = e.message } finally { loading.value = false }
 }
 
-function abrir(tipo, item = null, areaId = '') {
+function abrir(item = null) {
   errForm.value = ''
   const siguiente = Math.max(0, ...areas.value.map((a) => a.numero)) + 1
-  form.value = {
-    numero: item?.numero ?? (tipo === 'area' ? siguiente : ''),
-    nombre: item?.nombre || '',
-    area_id: item ? (item.area_id || '') : areaId
-  }
-  cajon.value = { tipo, item }
+  form.value = { numero: item?.numero ?? siguiente, nombre: item?.nombre || '' }
+  cajon.value = { item }
 }
 
-const tituloCajon = computed(() => {
-  if (!cajon.value) return ''
-  const { tipo, item } = cajon.value
-  if (tipo === 'area') return item ? 'Editar área' : 'Nueva área'
-  return item ? 'Editar ubicación' : 'Nueva ubicación'
-})
+const tituloCajon = computed(() => (cajon.value?.item ? 'Editar área' : 'Nueva área'))
 
 async function guardar() {
-  const { tipo, item } = cajon.value
+  const { item } = cajon.value
   const nombre = String(form.value.nombre || '').trim()
-  if (tipo === 'ubicacion' && !nombre) { errForm.value = 'Escribe el nombre'; return }
-  if (tipo === 'area' && !(Number(form.value.numero) >= 1)) { errForm.value = 'Pon el número del área'; return }
-  const body = tipo === 'area'
-    ? { numero: Number(form.value.numero), nombre }
-    : { nombre, area_id: form.value.area_id ? Number(form.value.area_id) : null }
-  const base = tipo === 'area' ? '/api/admin/areas' : '/api/admin/ubicaciones'
+  if (!(Number(form.value.numero) >= 1)) { errForm.value = 'Pon el número del área'; return }
+  const body = { numero: Number(form.value.numero), nombre }
   guardando.value = true
   errForm.value = ''
   try {
-    if (item) await api.put(`${base}/${item.id}`, body)
-    else await api.post(base, body)
-    ok(tipo === 'area' ? 'Área guardada' : 'Ubicación guardada')
+    if (item) await api.put(`/api/admin/areas/${item.id}`, body)
+    else await api.post('/api/admin/areas', body)
+    ok('Área guardada')
     cajon.value = null
     invalidarCatalogo()
     cargar()
   } catch (e) { errForm.value = e.message } finally { guardando.value = false }
 }
 
-// Cada ubicación lleva el número de su responsable y el 1 es el que más activos
+// Cada responsable lleva su número dentro del área y el 1 es el que más activos
 // tiene. Los números no se mueven solos: se piden aquí, cuando cambia alguien.
 const renumerando = ref(false)
 
 function renumerar() {
   confirmar({
     titulo: 'Renumerar por responsable',
-    mensaje: 'Las ubicaciones vuelven a cuadrarse con sus responsables: el 1 pasa a ser el que más activos tiene y cada activo se queda en la de su persona. Los cambios quedan en el historial de movimientos. FACTURACION no se toca.'
+    mensaje: 'Los números vuelven a cuadrarse con sus responsables: el 1 pasa a ser el que más activos tiene y cada activo se queda con su persona. Los cambios quedan en el historial de movimientos. FACTURACION no se toca.'
   }, async () => {
     renumerando.value = true
     try {
@@ -97,15 +81,14 @@ function renumerar() {
 }
 
 function eliminar() {
-  const { tipo, item } = cajon.value
-  const base = tipo === 'area' ? '/api/admin/areas' : '/api/admin/ubicaciones'
+  const { item } = cajon.value
   confirmar({
-    titulo: tipo === 'area' ? 'Eliminar área' : 'Eliminar ubicación',
-    mensaje: `¿Eliminar "${item.etiqueta || item.nombre}"? Esta acción no se puede deshacer.`,
+    titulo: 'Eliminar área',
+    mensaje: `¿Eliminar "${item.etiqueta}"? Esta acción no se puede deshacer.`,
     peligro: true
   }, async () => {
     try {
-      await api.del(`${base}/${item.id}`)
+      await api.del(`/api/admin/areas/${item.id}`)
       ok('Eliminado')
       cajon.value = null
       invalidarCatalogo()
@@ -121,13 +104,12 @@ onMounted(cargar)
   <div>
     <div class="head">
       <div>
-        <h2>Áreas y ubicaciones</h2>
-        <p class="muted">{{ areas.length }} área(s) · {{ ubicaciones.length }} ubicación(es). Un área agrupa varias ubicaciones.</p>
+        <h2>Áreas</h2>
+        <p class="muted">{{ areas.length }} área(s) · {{ responsables.length }} responsable(s). Cada área agrupa a sus responsables.</p>
       </div>
       <span class="btns">
         <button class="btn sec" :disabled="renumerando" title="El 1 pasa a ser el responsable con más activos" @click="renumerar"><AppIcon name="check" :size="14" /> {{ renumerando ? 'Renumerando…' : 'Renumerar' }}</button>
-        <button class="btn sec" @click="abrir('ubicacion')"><AppIcon name="plus" :size="14" /> Ubicación</button>
-        <button class="btn" @click="abrir('area')"><AppIcon name="plus" :size="14" /> Nueva área</button>
+        <button class="btn" @click="abrir()"><AppIcon name="plus" :size="14" /> Nueva área</button>
       </span>
     </div>
 
@@ -135,22 +117,14 @@ onMounted(cargar)
     <p v-else-if="error" class="err">{{ error }}</p>
 
     <div v-else class="grid">
-      <div v-for="g in grupos" :key="g.id ?? 'sin'" class="card area" :class="{ suelta: g.id === null }">
+      <div v-for="g in grupos" :key="g.id" class="card area">
         <div class="area-head">
           <div>
             <b>{{ g.etiqueta }}</b>
-            <span class="muted">{{ g.ubicaciones.length }} ubicación(es) · {{ totalActivos(g.ubicaciones) }} activo(s)</span>
+            <span class="muted">{{ g.responsables.length }} responsable(s) · {{ totalActivos(g.responsables) }} activo(s)</span>
           </div>
-          <button v-if="g.id" class="btn sec sm" title="Editar área" @click="abrir('area', g)"><AppIcon name="edit" :size="14" /></button>
+          <button class="btn sec sm" title="Editar área" @click="abrir(g)"><AppIcon name="edit" :size="14" /></button>
         </div>
-        <ul class="ubics">
-          <li v-for="u in g.ubicaciones" :key="u.id" @click="abrir('ubicacion', u)">
-            <span>{{ u.nombre }}</span>
-            <span class="badge" :class="u.activos ? 'ok' : 'warn'">{{ u.activos }}</span>
-          </li>
-          <li v-if="!g.ubicaciones.length" class="vacio">Sin ubicaciones</li>
-        </ul>
-        <button v-if="g.id" class="add" @click="abrir('ubicacion', null, g.id)"><AppIcon name="plus" :size="13" /> Añadir ubicación</button>
       </div>
     </div>
 
@@ -158,23 +132,16 @@ onMounted(cargar)
       <template v-if="cajon">
         <p v-if="errForm" class="err">{{ errForm }}</p>
         <div class="form-grid una">
-          <div v-if="cajon.tipo === 'area'" class="field">
+          <div class="field">
             <label>Número del área *</label>
             <input v-model="form.numero" type="number" min="1" step="1" class="input" @keyup.enter="guardar" />
           </div>
           <div class="field">
-            <label>{{ cajon.tipo === 'area' ? 'Nombre (opcional)' : 'Nombre *' }}</label>
-            <input v-model="form.nombre" class="input" :placeholder="cajon.tipo === 'area' ? 'Sale como «Área 2 - NOMBRE»' : ''" @keyup.enter="guardar" />
-          </div>
-          <div v-if="cajon.tipo === 'ubicacion'" class="field">
-            <label>Área</label>
-            <select v-model="form.area_id" class="select">
-              <option value="">Sin área</option>
-              <option v-for="a in areas" :key="a.id" :value="a.id">{{ a.etiqueta }}</option>
-            </select>
+            <label>Nombre (opcional)</label>
+            <input v-model="form.nombre" class="input" placeholder="Sale como «Área 2 - NOMBRE»" @keyup.enter="guardar" />
           </div>
         </div>
-        <p v-if="cajon.item && cajon.tipo === 'ubicacion'" class="muted nota">{{ cajon.item.activos }} activo(s) en esta ubicación. Cambiar el área no mueve ni modifica los activos.</p>
+        <p v-if="cajon.item" class="muted nota">{{ cajon.item.responsables.length }} responsable(s) en esta área.</p>
       </template>
       <template #pie>
         <button v-if="cajon?.item" class="btn danger" @click="eliminar"><AppIcon name="trash" :size="15" /> Eliminar</button>
@@ -195,19 +162,7 @@ onMounted(cargar)
 .nota { font-size: 12px; margin-top: 14px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
 .area { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
-.area.suelta { border-style: dashed; }
 .area-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
 .area-head b { display: block; font-size: 14px; }
 .area-head .muted { font-size: 12px; }
-.ubics { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.ubics li {
-  display: flex; justify-content: space-between; align-items: center; gap: 8px;
-  padding: 7px 9px; border-radius: 8px; background: #f8fafc; cursor: pointer; font-size: 13px;
-}
-.ubics li:hover { background: #eef4ff; }
-.ubics li.vacio { cursor: default; color: var(--muted); background: none; font-style: italic; }
-.add {
-  align-self: flex-start; display: inline-flex; align-items: center; gap: 4px;
-  background: none; border: none; color: var(--primary); font-weight: 600; font-size: 12px; cursor: pointer; padding: 2px 0;
-}
 </style>

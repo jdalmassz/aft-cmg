@@ -1,11 +1,14 @@
 const db = require('./db');
 const alcance = require('./alcance');
+const { AREA_ETIQUETA_DE } = require('./activos-query');
 
 const MOV_COLUMNS = `
   m.id, m.tipo, m.ubicacion_origen_id, m.ubicacion_destino_id,
   m.custodio_origen_id, m.custodio_destino_id, m.estado_origen, m.estado_destino,
   m.comentario, m.usuario_id, m.created_at,
   uo.nombre AS ubicacion_origen, ud.nombre AS ubicacion_destino,
+  ${AREA_ETIQUETA_DE('ao')} AS area_origen,
+  ${AREA_ETIQUETA_DE('ad')} AS area_destino,
   co.nombre AS custodio_origen, cd.nombre AS custodio_destino,
   a.id AS activo_id, a.codigo AS activo_codigo, a.descripcion AS activo_descripcion`;
 
@@ -14,6 +17,8 @@ const MOV_FROM = `
   JOIN activos a ON a.id = m.activo_id
   LEFT JOIN ubicaciones uo ON uo.id = m.ubicacion_origen_id
   LEFT JOIN ubicaciones ud ON ud.id = m.ubicacion_destino_id
+  LEFT JOIN areas ao ON ao.id = uo.area_id
+  LEFT JOIN areas ad ON ad.id = ud.area_id
   LEFT JOIN custodios co ON co.id = m.custodio_origen_id
   LEFT JOIN custodios cd ON cd.id = m.custodio_destino_id`;
 

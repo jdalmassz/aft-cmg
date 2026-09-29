@@ -438,11 +438,23 @@ async function verHistorial(a) {
 
 function flecha(x, y) { return ` ${x || '—'} → ${y || '—'} ` }
 
+// El tipo viene en el nombre de banco (TRASLADO_UBICACION…): aquí se enseña
+// como se dice en la app.
+function etiquetaMov(m) {
+  switch (m.tipo) {
+    case 'CREADO': return 'Registro inicial'
+    case 'TRASLADO_UBICACION': return 'Cambio de área'
+    case 'CAMBIO_CUSTODIO': return 'Cambio de responsable'
+    case 'CAMBIAR_ESTADO': return 'Cambio de estado'
+    default: return m.tipo
+  }
+}
+
 function descMov(m) {
   switch (m.tipo) {
-    case 'CREADO': return 'Registro inicial' + (m.ubicacion_destino ? ` — ubicación: ${m.ubicacion_destino}` : '') + (m.custodio_destino ? `, custodio: ${m.custodio_destino}` : '') + (m.estado_destino ? `, estado: ${m.estado_destino}` : '')
-    case 'TRASLADO_UBICACION': return 'Traslado de ubicación: ' + flecha(m.ubicacion_origen, m.ubicacion_destino)
-    case 'CAMBIO_CUSTODIO': return 'Cambio de custodio: ' + flecha(m.custodio_origen, m.custodio_destino)
+    case 'CREADO': return 'Registro inicial' + (m.area_destino ? ` — área: ${m.area_destino}` : '') + (m.custodio_destino ? `, responsable: ${m.custodio_destino}` : '') + (m.estado_destino ? `, estado: ${m.estado_destino}` : '')
+    case 'TRASLADO_UBICACION': return 'Cambio de área: ' + flecha(m.area_origen, m.area_destino)
+    case 'CAMBIO_CUSTODIO': return 'Cambio de responsable: ' + flecha(m.custodio_origen, m.custodio_destino)
     case 'CAMBIAR_ESTADO': return 'Estado: ' + flecha(m.estado_origen, m.estado_destino)
     default: return m.tipo
   }
@@ -578,7 +590,7 @@ onMounted(() => {
               <div class="tl-dot"></div>
               <div class="tl-body">
                 <div class="tl-head">
-                  <span class="badge" :class="tipoBadge(m)">{{ m.tipo.replace(/_/g, ' ') }}</span>
+                  <span class="badge" :class="tipoBadge(m)">{{ etiquetaMov(m) }}</span>
                   <span class="muted tl-fecha">{{ fmtFecha(m.created_at) }}</span>
                 </div>
                 <p class="tl-desc">{{ descMov(m) }}</p>
@@ -607,7 +619,7 @@ onMounted(() => {
             <div class="field"><label>Responsable</label>
               <select v-model="formulario.custodio_id" class="select"><option value="">—</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
             </div>
-            <div class="field full"><small class="muted">El área y el responsable deciden dónde queda el activo. Si todavía no existe una ubicación para esa pareja, se crea sola.</small></div>
+            <div class="field full"><small class="muted">El área y el responsable deciden dónde queda el activo. Si esa pareja todavía no existe, se guarda sola.</small></div>
             <div class="field"><label>Fecha de adquisición</label><input v-model="formulario.fecha_adquisicion" class="input" placeholder="dd-mm-año" /></div>
             <div class="field"><label>Valor CUP</label><input v-model="formulario.valor_cup" type="number" step="0.01" class="input" /></div>
             <div class="field"><label>Valor USD</label><input v-model="formulario.valor_usd" type="number" step="0.01" class="input" /></div>
@@ -669,7 +681,7 @@ onMounted(() => {
         <div class="field"><label>Responsable</label>
           <select v-model="formulario.custodio_id" class="select"><option value="">—</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
         </div>
-        <div class="field full"><small class="muted">El área y el responsable deciden dónde queda el activo. Si todavía no existe una ubicación para esa pareja, se crea sola.</small></div>
+        <div class="field full"><small class="muted">El área y el responsable deciden dónde queda el activo. Si esa pareja todavía no existe, se guarda sola.</small></div>
         <div class="field"><label>Fecha de adquisición</label><input v-model="formulario.fecha_adquisicion" class="input" placeholder="dd-mm-año" /></div>
         <div class="field"><label>Valor CUP</label><input v-model="formulario.valor_cup" type="number" step="0.01" class="input" /></div>
         <div class="field"><label>Valor USD</label><input v-model="formulario.valor_usd" type="number" step="0.01" class="input" /></div>
