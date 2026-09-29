@@ -93,21 +93,23 @@ function drawHeader(doc, meta) {
       width: COL.ruleEnd - M.left, align: 'right'
     });
 
-  // Lo seleccionado va en su propia línea, a todo el ancho: un nombre largo no
-  // cabe en el bloque de la izquierda sin pisar el título. Área y ubicación no:
-  // ya salen en el cuerpo, debajo, con su propio encabezado.
+  // Quién y dónde: el área de la hoja y la persona que responde por ella. Van los dos
+  // ahí arriba, porque quien recibe el papel tiene que leerlo sin interpretar el
+  // cuerpo: una hoja firmada por ALIESKI sin decir el almacén no sirve para nada.
   let yCols = y0 + 84;
   const seleccion = [
+    meta.area && ['Área:', meta.area],
     meta.responsable && ['Responsable:', meta.responsable]
   ].filter(Boolean);
   if (seleccion.length) {
     let x = M.left;
     for (const [k, v] of seleccion) {
-      kvLine(doc, x, yCols - 6, k, v);
       doc.font('Helvetica-Bold');
-      const w = doc.widthOfString(k);
-      doc.font('Helvetica');
-      x += w + doc.widthOfString(' ' + v) + 18;
+      const ancho = doc.widthOfString(k) + doc.widthOfString(' ' + v) + 18;
+      // Un nombre largo baja a la siguiente línea en vez de salirse del margen.
+      if (x > M.left && x + ancho > COL.ruleEnd) { x = M.left; yCols += 14; }
+      kvLine(doc, x, yCols - 6, k, v);
+      x += ancho;
     }
     yCols += 14;
   }

@@ -2,6 +2,7 @@
 import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import QRCode from 'qrcode'
 import { api, formatMoneda, getUser } from '../api'
+import { getCatalogo, invalidarCatalogo } from '../catalogo'
 import AppIcon from '../components/AppIcon.vue'
 import Drawer from '../components/Drawer.vue'
 import { usePreviewPdf } from '../previewPdf'
@@ -44,7 +45,7 @@ const guardando = ref(false)
 
 const exportandoPdf = ref(false)
 const conteoAbierto = ref(false)
-const conteo = ref({ formato: 'pdf', area: '', ubicacion: '', responsableArea: '', separar: '', numero: '', periodo: '' })
+const conteo = ref({ formato: 'pdf', area: '', ubicacion: '', responsable: '', responsableArea: '', separar: '', numero: '', periodo: '' })
 const qrAbierto = ref(false)
 const qrImagenes = ref([])
 const qrTotal = ref(0)
@@ -89,7 +90,7 @@ function editarDrawer() {
     codigo: a.codigo || '', descripcion: a.descripcion, marca_id: a.marca_id || '',
     modelo: a.modelo || '', valor_cup: a.valor_cup ?? '', valor_usd: a.valor_usd ?? '',
     categoria_id: a.categoria_id || '', sucursal_id: a.sucursal_id || 1,
-    fecha_adquisicion: a.fecha_adquisicion || '', ubicacion_id: a.ubicacion_id || '',
+    fecha_adquisicion: a.fecha_adquisicion || '', area_id: a.area_id || '',
     custodio_id: a.custodio_id || '', estado: a.estado || 'ACTIVO', comentarios: a.comentarios || ''
   }
   editDrawer.value = true
@@ -145,7 +146,7 @@ const chips = computed(() => {
 function emptyForm() {
   return {
     codigo: '', descripcion: '', marca_id: '', modelo: '', valor_cup: '', valor_usd: '',
-    categoria_id: '', sucursal_id: 1, fecha_adquisicion: '', ubicacion_id: '',
+    categoria_id: '', sucursal_id: 1, fecha_adquisicion: '', area_id: '',
     custodio_id: '', estado: 'ACTIVO', comentarios: ''
   }
 }
@@ -176,7 +177,7 @@ async function cargar() {
 }
 
 async function cargarCatalogo() {
-  catalogo.value = await api.get('/api/catalogo')
+  catalogo.value = await getCatalogo()
 }
 
 function aplicar() {
@@ -218,7 +219,10 @@ async function guardar() {
   errores.value = ''
   try {
     const body = { ...formulario.value }
-    for (const k of ['marca_id', 'categoria_id', 'sucursal_id', 'ubicacion_id', 'custodio_id']) {
+    // La ubicación NO se manda: la decide el servidor con el área y el responsable
+    // (así no hay forma de guardar un activo en una ubicación que no le toca).
+    delete body.ubicacion_id
+    for (const k of ['marca_id', 'categoria_id', 'sucursal_id', 'area_id', 'custodio_id']) {
       body[k] = body[k] ? Number(body[k]) : null
     }
     for (const k of ['valor_cup', 'valor_usd']) {
@@ -227,16 +231,24 @@ async function guardar() {
     if (!body.fecha_adquisicion) body.fecha_adquisicion = null
     const aid = mostrar.value ? null : activoSel.value?.id
     if (aid) {
-      await api.put(`/api/activos/${aid}`, body)
+      // El servidor devuelve el activo ya calculado: se pinta en la lista al
+      // momento, sin pedir la lista entera otra vez (otra ida y vuelta de red).
+      const fila = await api.put(`/api/activos/${aid}`, body)
+      const i = activos.value.findIndex((x) => x.id === aid)
+      if (i >= 0) activos.value[i] = fila
+      activoSel.value = fila
       ok('Activo actualizado')
     } else {
       await api.post('/api/activos', body)
       ok('Activo creado')
+      await cargar()
     }
     mostrar.value = false
     editDrawer.value = false
     drawerAbierto.value = false
-    cargar()
+    // Guardar puede haber creado una ubicación nueva (ALMACEN 4): que la próxima
+    // pantalla la vea sin tener que esperar a que caduque la caché del catálogo.
+    invalidarCatalogo()
   } catch (e) { errores.value = e.message } finally { guardando.value = false }
 }
 
@@ -265,8 +277,9 @@ onBeforeUnmount(() => mqMovil.removeEventListener('change', onMovil))
 
 function abrirConteo(formato) {
   const f = filtrosAplicados.value
-  conteo.value = { ...conteo.value, formato, area: f.area || '', ubicacion: f.ubicacion || '' }
+  conteo.value = { ...conteo.value, formato, area: f.area || '', ubicacion: f.ubicacion || '', responsable: f.custodio || '' }
   if (conteo.value.responsableArea && !responsablesConteo.value.some((r) => r.id === Number(conteo.value.responsableArea))) conteo.value.responsableArea = ''
+  if (conteo.value.responsable && !responsablesConteo.value.some((r) => r.id === Number(conteo.value.responsable))) conteo.value.responsable = ''
   conteoAbierto.value = true
   refrescarPreview(true)
 }
@@ -275,6 +288,7 @@ function cambiarAreaConteo() {
   if (conteo.value.ubicacion && !ubicacionesConteo.value.some((u) => u.id === Number(conteo.value.ubicacion))) conteo.value.ubicacion = ''
   // El responsable del área es de esa área: si ya no aparece en la nueva, se quita.
   if (conteo.value.responsableArea && !responsablesConteo.value.some((r) => r.id === Number(conteo.value.responsableArea))) conteo.value.responsableArea = ''
+  if (conteo.value.responsable && !responsablesConteo.value.some((r) => r.id === Number(conteo.value.responsable))) conteo.value.responsable = ''
 }
 
 // Los parámetros y el nombre del fichero salen de aquí, para que la vista previa
@@ -285,6 +299,7 @@ function paramsConteo() {
   const params = new URLSearchParams()
   if (c.area) params.set('area', c.area)
   if (c.ubicacion) params.set('ubicacion', c.ubicacion)
+  if (c.responsable) params.set('custodio', c.responsable)
   if (c.responsableArea) params.set('resp_area', c.responsableArea)
   if (c.separar) params.set('separar', c.separar)
   if (pdf && c.numero) params.set('conteo', c.numero)
@@ -296,7 +311,8 @@ function nombreConteo() {
   const c = conteo.value
   const pdf = c.formato === 'pdf'
   const parte = [
-    c.ubicacion ? nome(catalogo.value.ubicaciones, c.ubicacion) : c.area ? areaDe(c.area) : ''
+    c.ubicacion ? nome(catalogo.value.ubicaciones, c.ubicacion) : c.area ? areaDe(c.area) : '',
+    c.responsable ? nome(catalogo.value.custodios, c.responsable) : ''
   ].filter(Boolean).join('-')
   return (pdf ? 'Conteo-fisico' : 'AFT-Camaguey') + (parte ? '-' + parte.replace(/\s+/g, '_') : '') + '-' + new Date().toISOString().slice(0, 10) + (pdf ? '.pdf' : '.xlsx')
 }
@@ -415,7 +431,12 @@ function fmtFecha(iso) {
   return new Date(iso).toLocaleString('es-CU', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
+// Las dos cosas a la vez: el catálogo no depende de la lista, y esperar a uno para
+// pedir el otro era medio segundo de más en cada entrada a la pantalla.
+onMounted(() => {
+  cargar().catch(() => {})
+  cargarCatalogo().catch(() => {})
+})
 </script>
 
 <template>
@@ -555,12 +576,13 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
             <div class="field"><label>Categoría</label>
               <select v-model="formulario.categoria_id" class="select"><option value="">—</option><option v-for="c in catalogo.categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
             </div>
-            <div class="field"><label>Ubicación</label>
-              <select v-model="formulario.ubicacion_id" class="select"><option value="">—</option><option v-for="u in catalogo.ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}{{ u.area_id ? ' — ' + areaDe(u.area_id) : '' }}</option></select>
+            <div class="field"><label>Área</label>
+              <select v-model="formulario.area_id" class="select"><option value="">—</option><option v-for="a in catalogo.areas" :key="a.id" :value="a.id">{{ a.etiqueta }}</option></select>
             </div>
             <div class="field"><label>Responsable</label>
               <select v-model="formulario.custodio_id" class="select"><option value="">—</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
             </div>
+            <div class="field full"><small class="muted">El área y el responsable deciden la ubicación: ALMACEN + ALIESKI = ALMACEN 1. Si esa ubicación todavía no existe, la crea sola.</small></div>
             <div class="field"><label>Fecha de adquisición</label><input v-model="formulario.fecha_adquisicion" class="input" placeholder="dd-mm-año" /></div>
             <div class="field"><label>Valor CUP</label><input v-model="formulario.valor_cup" type="number" step="0.01" class="input" /></div>
             <div class="field"><label>Valor USD</label><input v-model="formulario.valor_usd" type="number" step="0.01" class="input" /></div>
@@ -617,12 +639,13 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
         <div class="field"><label>Categoría</label>
           <select v-model="formulario.categoria_id" class="select"><option value="">—</option><option v-for="c in catalogo.categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
         </div>
-        <div class="field"><label>Ubicación</label>
-          <select v-model="formulario.ubicacion_id" class="select"><option value="">—</option><option v-for="u in catalogo.ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}{{ u.area_id ? ' — ' + areaDe(u.area_id) : '' }}</option></select>
+        <div class="field"><label>Área</label>
+          <select v-model="formulario.area_id" class="select"><option value="">—</option><option v-for="a in catalogo.areas" :key="a.id" :value="a.id">{{ a.etiqueta }}</option></select>
         </div>
         <div class="field"><label>Responsable</label>
           <select v-model="formulario.custodio_id" class="select"><option value="">—</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
         </div>
+        <div class="field full"><small class="muted">El área y el responsable deciden la ubicación: ALMACEN + ALIESKI = ALMACEN 1. Si esa ubicación todavía no existe, la crea sola.</small></div>
         <div class="field"><label>Fecha de adquisición</label><input v-model="formulario.fecha_adquisicion" class="input" placeholder="dd-mm-año" /></div>
         <div class="field"><label>Valor CUP</label><input v-model="formulario.valor_cup" type="number" step="0.01" class="input" /></div>
         <div class="field"><label>Valor USD</label><input v-model="formulario.valor_usd" type="number" step="0.01" class="input" /></div>
@@ -634,7 +657,7 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
       </template>
     </Drawer>
 
-    <Drawer :open="conteoAbierto" :titulo="conteo.formato === 'pdf' ? 'Hoja de conteo físico' : 'Exportar a Excel'" subtitulo="Todo, por área o ubicación" @close="cerrarConteo">
+    <Drawer :open="conteoAbierto" :titulo="conteo.formato === 'pdf' ? 'Hoja de conteo físico' : 'Exportar a Excel'" subtitulo="Por área, ubicación o responsable" @close="cerrarConteo">
       <div class="formato">
         <button class="btn sec sm" :class="{ on: conteo.formato === 'pdf' }" @click="ponerFormato('pdf')">PDF · conteo físico</button>
         <button class="btn sec sm" :class="{ on: conteo.formato === 'excel' }" @click="ponerFormato('excel')">Excel · inventario</button>
@@ -646,7 +669,15 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
         <div class="field"><label>Ubicación</label>
           <select v-model="conteo.ubicacion" class="select"><option value="">{{ conteo.area ? 'Todas las del área' : 'Todas las ubicaciones' }}</option><option v-for="u in ubicacionesConteo" :key="u.id" :value="u.id">{{ u.nombre }}</option></select>
         </div>
-        <div class="field"><label>Responsable del área</label>
+        <div class="field"><label>Responsable</label>
+          <select v-model="conteo.responsable" class="select">
+            <option value="">Todos los responsables</option>
+            <option v-for="r in responsablesConteo" :key="r.id" :value="r.id">{{ r.nombre }}</option>
+          </select>
+          <small v-if="conteo.responsable" class="muted">La hoja sale sólo con lo suyo: nada de otros responsables. Él firma.</small>
+          <small v-else class="muted">Si eliges uno, la hoja lleva sólo sus activos.</small>
+        </div>
+        <div class="field" v-if="!conteo.responsable"><label>Responsable del área</label>
           <select v-model="conteo.responsableArea" class="select"><option value="">Por defecto</option><option v-for="r in responsablesConteo" :key="r.id" :value="r.id">{{ r.nombre }}</option></select>
           <small v-if="responsablesConteo.length === 0" class="muted">Sin responsables en esta área.</small>
           <small v-else class="muted">Quién firma en el pie de la hoja. En por defecto, el responsable principal del área.</small>
@@ -664,7 +695,7 @@ onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
           <div class="field"><label>Período</label><input v-model="conteo.periodo" class="input" placeholder="En blanco = mes actual (p. ej. Septiembre / 2026)" /></div>
         </template>
       </div>
-      <p class="muted nota">{{ conteo.formato === 'pdf' ? 'Salen sólo los activos en estado ACTIVO, agrupados por área y ubicación.' : 'Mismo formato que «Control de AFT cmg rev01.xlsx».' }}</p>
+      <p class="muted nota">{{ conteo.formato === 'pdf' ? 'Salen sólo los activos en estado ACTIVO, agrupados por área y ubicación' + (conteo.responsable ? ', y sólo los del responsable elegido' : '') + '.' : 'Mismo formato que «Control de AFT cmg rev01.xlsx».' }}</p>
       <template #pie>
         <button class="btn sec" @click="cerrarConteo">Cancelar</button>
         <button v-if="conteo.formato === 'pdf'" class="btn sec" :disabled="preview.cargando || !total" title="Ver la hoja antes de descargarla" @click="verPreview">
