@@ -17,7 +17,6 @@ const errores = ref('')
 const q = ref('')
 const fCategoria = ref('')
 const fArea = ref('')
-const fUbicacion = ref('')
 const fResponsable = ref('')
 const fEstado = ref('')
 
@@ -104,10 +103,6 @@ function eliminarDrawer() {
 
 const ESTADOS = ['ACTIVO', 'BAJA']
 
-const ubicacionesDe = (areaId) => (areaId
-  ? catalogo.value.ubicaciones.filter((u) => u.area_id === Number(areaId))
-  : catalogo.value.ubicaciones)
-const ubicacionesFiltro = computed(() => ubicacionesDe(fArea.value))
 
 // Los responsables que se pueden elegir en el cajón: los que tienen activos en el
 // área elegida; sin área, todos. Con uno elegido, ese es el que firma la hoja.
@@ -122,7 +117,6 @@ const responsablesConteo = computed(() => {
 })
 
 function cambiarArea() {
-  if (fUbicacion.value && !ubicacionesFiltro.value.some((u) => u.id === Number(fUbicacion.value))) fUbicacion.value = ''
   aplicar()
 }
 
@@ -135,7 +129,6 @@ const chips = computed(() => {
   if (f.q) out.push({ k: 'q', texto: `«${f.q}»` })
   if (f.categoria) out.push({ k: 'categoria', texto: nome(catalogo.value.categorias, f.categoria) })
   if (f.area) out.push({ k: 'area', texto: areaDe(f.area) })
-  if (f.ubicacion) out.push({ k: 'ubicacion', texto: nome(catalogo.value.ubicaciones, f.ubicacion) })
   if (f.custodio) out.push({ k: 'custodio', texto: nome(catalogo.value.custodios, f.custodio) })
   if (f.estado) out.push({ k: 'estado', texto: f.estado })
   return out
@@ -154,7 +147,6 @@ function filtrosQuery() {
   if (filtrosAplicados.value.q) params.set('q', filtrosAplicados.value.q)
   if (filtrosAplicados.value.categoria) params.set('categoria', filtrosAplicados.value.categoria)
   if (filtrosAplicados.value.area) params.set('area', filtrosAplicados.value.area)
-  if (filtrosAplicados.value.ubicacion) params.set('ubicacion', filtrosAplicados.value.ubicacion)
   if (filtrosAplicados.value.custodio) params.set('custodio', filtrosAplicados.value.custodio)
   if (filtrosAplicados.value.estado) params.set('estado', filtrosAplicados.value.estado)
   return params
@@ -180,12 +172,12 @@ async function cargarCatalogo() {
 
 function aplicar() {
   pagina.value = 1
-  filtrosAplicados.value = { q: q.value.trim(), categoria: fCategoria.value, area: fArea.value, ubicacion: fUbicacion.value, custodio: fResponsable.value, estado: fEstado.value }
+  filtrosAplicados.value = { q: q.value.trim(), categoria: fCategoria.value, area: fArea.value, custodio: fResponsable.value, estado: fEstado.value }
   cargar()
 }
 
 function limpiar() {
-  q.value = ''; fCategoria.value = ''; fArea.value = ''; fUbicacion.value = ''; fResponsable.value = ''; fEstado.value = ''
+  q.value = ''; fCategoria.value = ''; fArea.value = ''; fResponsable.value = ''; fEstado.value = ''
   filtrosAplicados.value = {}
   if (pagina.value !== 1) pagina.value = 1
   cargar()
@@ -195,7 +187,6 @@ function quitarChip(k) {
   if (k === 'q') q.value = ''
   if (k === 'categoria') fCategoria.value = ''
   if (k === 'area') fArea.value = ''
-  if (k === 'ubicacion') fUbicacion.value = ''
   if (k === 'custodio') fResponsable.value = ''
   if (k === 'estado') fEstado.value = ''
   aplicar()
@@ -459,7 +450,6 @@ onMounted(() => {
       <input v-model="q" class="input" placeholder="Buscar por descripción, modelo, código…" @keyup.enter="aplicar" />
       <select v-model="fCategoria" class="select" @change="aplicar"><option value="">Categoría</option><option v-for="c in catalogo.categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
       <select v-model="fArea" class="select" @change="cambiarArea"><option value="">Área</option><option v-for="a in catalogo.areas" :key="a.id" :value="a.id">{{ a.etiqueta }}</option></select>
-      <select v-model="fUbicacion" class="select" @change="aplicar"><option value="">Ubicación</option><option v-for="u in ubicacionesFiltro" :key="u.id" :value="u.id">{{ u.nombre }}</option></select>
       <select v-model="fResponsable" class="select" @change="aplicar"><option value="">Responsable</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
       <select v-model="fEstado" class="select" @change="aplicar"><option value="">Estado</option><option v-for="e in ESTADOS" :key="e" :value="e">{{ e }}</option></select>
       <span class="btns">
@@ -492,7 +482,7 @@ onMounted(() => {
       <div class="card table-wrap">
         <table class="tbl" :class="{ compact: filasCompactas }">
           <thead>
-            <tr><th>Código</th><th>Descripción</th><th>Marca</th><th>Ubicación</th><th>Responsable</th><th>Estado</th></tr>
+            <tr><th>Código</th><th>Descripción</th><th>Marca</th><th>Área</th><th>Responsable</th><th>Estado</th></tr>
           </thead>
           <tbody>
             <template v-for="a in activos" :key="a.id">
@@ -500,7 +490,7 @@ onMounted(() => {
                 <td><b class="codigo">{{ a.codigo || '—' }}</b></td>
                 <td><b>{{ a.descripcion }}</b></td>
                 <td>{{ a.marca || '—' }}</td>
-                <td><span v-if="a.ubicacion" class="ubicacion">{{ a.ubicacion }}</span><span v-else>—</span></td>
+                <td><span v-if="a.area">{{ a.area }}</span><span v-else>—</span></td>
                 <td>{{ a.custodio || '—' }}</td>
                 <td><span class="badge" :class="a.estado === 'ACTIVO' ? 'ok' : 'warn'">{{ a.estado }}</span></td>
               </tr>
@@ -582,7 +572,7 @@ onMounted(() => {
             <div class="field"><label>Responsable</label>
               <select v-model="formulario.custodio_id" class="select"><option value="">—</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
             </div>
-            <div class="field full"><small class="muted">El área y el responsable deciden la ubicación: ALMACEN + ALIESKI = ALMACEN 1. Si esa ubicación todavía no existe, la crea sola.</small></div>
+            <div class="field full"><small class="muted">El área y el responsable deciden dónde queda el activo. Si todavía no existe una ubicación para esa pareja, se crea sola.</small></div>
             <div class="field"><label>Fecha de adquisición</label><input v-model="formulario.fecha_adquisicion" class="input" placeholder="dd-mm-año" /></div>
             <div class="field"><label>Valor CUP</label><input v-model="formulario.valor_cup" type="number" step="0.01" class="input" /></div>
             <div class="field"><label>Valor USD</label><input v-model="formulario.valor_usd" type="number" step="0.01" class="input" /></div>
@@ -597,7 +587,6 @@ onMounted(() => {
             <div class="det"><span>Marca</span><b>{{ activoSel.marca || '—' }}</b></div>
             <div class="det"><span>Modelo</span><b>{{ activoSel.modelo || '—' }}</b></div>
             <div class="det"><span>Área</span><b>{{ activoSel.area || '—' }}</b></div>
-            <div class="det"><span>Ubicación</span><b>{{ activoSel.ubicacion || '—' }}</b></div>
             <div class="det"><span>Responsable</span><b>{{ activoSel.custodio || '—' }}</b></div>
             <div class="det"><span>Valor CUP</span><b>{{ formatMoneda(activoSel.valor_cup) }}</b></div>
             <div class="det"><span>Valor USD</span><b>{{ formatMoneda(activoSel.valor_usd) }}</b></div>
@@ -645,7 +634,7 @@ onMounted(() => {
         <div class="field"><label>Responsable</label>
           <select v-model="formulario.custodio_id" class="select"><option value="">—</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
         </div>
-        <div class="field full"><small class="muted">El área y el responsable deciden la ubicación: ALMACEN + ALIESKI = ALMACEN 1. Si esa ubicación todavía no existe, la crea sola.</small></div>
+        <div class="field full"><small class="muted">El área y el responsable deciden dónde queda el activo. Si todavía no existe una ubicación para esa pareja, se crea sola.</small></div>
         <div class="field"><label>Fecha de adquisición</label><input v-model="formulario.fecha_adquisicion" class="input" placeholder="dd-mm-año" /></div>
         <div class="field"><label>Valor CUP</label><input v-model="formulario.valor_cup" type="number" step="0.01" class="input" /></div>
         <div class="field"><label>Valor USD</label><input v-model="formulario.valor_usd" type="number" step="0.01" class="input" /></div>
