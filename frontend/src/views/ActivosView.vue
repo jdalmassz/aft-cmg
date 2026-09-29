@@ -497,7 +497,7 @@ onMounted(() => {
           <div v-if="menuExcel" class="menu-fondo" @click="menuExcel = false"></div>
           <div v-if="menuExcel" class="menu-lista">
             <button class="menu-op" :disabled="imprimiendo" @click="elegirExcel(imprimirListado)"><AppIcon name="printer" :size="15" /> {{ imprimiendo ? 'Preparando…' : 'Imprimir' }}</button>
-            <button class="menu-op" :disabled="exportandoExcel" @click="elegirExcel(descargarExcel)"><AppIcon name="file" :size="15" /> {{ exportandoExcel ? 'Generando…' : 'Descargar .xlsx' }}</button>
+            <button class="menu-op" :disabled="exportandoExcel" @click="elegirExcel(descargarExcel)"><AppIcon name="file" :size="15" /> {{ exportandoExcel ? 'Generando…' : 'Exportar .xlsx' }}</button>
           </div>
         </span>
         <button class="btn sec sm" :disabled="exportandoPdf || !total" @click="abrirConteo()" title="Hoja de conteo físico en PDF: hay que elegir área y responsable"><AppIcon name="file" :size="15" /> PDF</button>
@@ -724,10 +724,10 @@ onMounted(() => {
       </div>
       <template #pie>
         <button class="btn sec" @click="cerrarConteo">Cancelar</button>
-        <button class="btn sec" :disabled="preview.cargando || !listoParaPdf" title="Ver la hoja antes de descargarla" @click="verPreview">
+        <button class="btn sec" :disabled="preview.cargando || !listoParaPdf" title="Ver la hoja antes de exportarla" @click="verPreview">
           <AppIcon name="eye" :size="15" /> {{ preview.cargando ? 'Generando…' : 'Vista previa' }}
         </button>
-        <button class="btn" :disabled="exportandoPdf || !listoParaPdf" @click="exportar"><AppIcon name="file" :size="15" /> {{ exportandoPdf ? 'Generando…' : 'Descargar PDF' }}</button>
+        <button class="btn" :disabled="exportandoPdf || !listoParaPdf" @click="exportar"><AppIcon name="file" :size="15" /> {{ exportandoPdf ? 'Generando…' : 'Exportar PDF' }}</button>
       </template>
     </Drawer>
 
@@ -737,7 +737,7 @@ onMounted(() => {
         <div v-else class="center"><span class="spinner"></span></div>
       </div>
       <template #pie>
-        <button class="btn sec" :disabled="!preview.url" @click="preview.descargar(nombreConteo())"><AppIcon name="file" :size="15" /> Descargar</button>
+        <button class="btn sec" :disabled="!preview.url" @click="preview.descargar(nombreConteo())"><AppIcon name="file" :size="15" /> Exportar</button>
         <button class="btn" :disabled="!preview.url" @click="preview.imprimir"><AppIcon name="printer" :size="15" /> Imprimir</button>
       </template>
     </Drawer>
