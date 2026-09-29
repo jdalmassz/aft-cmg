@@ -4,6 +4,7 @@ import { api } from '../api'
 import AppIcon from '../components/AppIcon.vue'
 import Drawer from '../components/Drawer.vue'
 import { ok, err } from '../toast'
+import { invalidarCatalogo } from '../catalogo'
 import { confirmar } from '../confirm'
 
 const areas = ref([])
@@ -70,6 +71,7 @@ async function guardar() {
     else await api.post(base, body)
     ok(tipo === 'area' ? 'Área guardada' : 'Ubicación guardada')
     cajon.value = null
+    invalidarCatalogo()
     cargar()
   } catch (e) { errForm.value = e.message } finally { guardando.value = false }
 }
@@ -88,6 +90,7 @@ function renumerar() {
       const r = await api.post('/api/admin/ubicaciones/renumerar', {})
       const movidos = r.familias.reduce((s, f) => s + (f.movidos || 0), 0)
       ok(movidos ? `Renumerado: ${movidos} activo(s) movido(s)` : 'Ya estaba cuadrado')
+      invalidarCatalogo()
       cargar()
     } catch (e) { err(e.message) } finally { renumerando.value = false }
   })
@@ -105,6 +108,7 @@ function eliminar() {
       await api.del(`${base}/${item.id}`)
       ok('Eliminado')
       cajon.value = null
+      invalidarCatalogo()
       cargar()
     } catch (e) { err(e.message) }
   })

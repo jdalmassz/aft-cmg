@@ -5,6 +5,7 @@ import AppIcon from '../components/AppIcon.vue'
 import Drawer from '../components/Drawer.vue'
 import { ok, err } from '../toast'
 import { confirmar } from '../confirm'
+import { invalidarCatalogo } from '../catalogo'
 
 const lista = ref([])
 const loading = ref(true)
@@ -62,6 +63,7 @@ async function guardar() {
       ok('Responsable creado')
     }
     mostrar.value = false
+    invalidarCatalogo()
     cargar()
   } catch (e) { error.value = e.message } finally { guardando.value = false }
 }
@@ -79,6 +81,7 @@ function eliminar(c) {
     try {
       await api.del(`/api/admin/custodios/${c.id}`)
       ok('Responsable eliminado')
+      invalidarCatalogo()
       cargar()
     } catch (e) { err(e.message) }
   })

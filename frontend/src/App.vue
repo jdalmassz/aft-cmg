@@ -33,6 +33,25 @@ const pageTitle = computed(() => {
   return t[route.path] || 'AFT Camagüey'
 })
 
+// Las pantallas se bajan por partes (un fichero por pantalla). Si sólo se esperaba
+// al clic, cada cambio de pantalla pagaba la descarga del fichero encima de la ida
+// a la base. Con adelantarlas al pasar el ratón por el menú (o al llegar con el
+// tabulador), cuando se hace clic ya están en la caché del navegador.
+const pantallas = {
+  '/inicio': () => import('./views/DashboardView.vue'),
+  '/activos': () => import('./views/ActivosView.vue'),
+  '/utiles': () => import('./views/UtilesView.vue'),
+  '/responsables': () => import('./views/ResponsablesView.vue'),
+  '/areas': () => import('./views/AreasView.vue')
+}
+const yaPrecargadas = new Set()
+function precargar(destino) {
+  const cargar = pantallas[destino]
+  if (!cargar || yaPrecargadas.has(destino)) return
+  yaPrecargadas.add(destino)
+  cargar().catch(() => yaPrecargadas.delete(destino))
+}
+
 function toggleColapsado() {
   colapsado.value = !colapsado.value
   localStorage.setItem('aft_sidebar', colapsado.value ? '1' : '0')
@@ -75,11 +94,11 @@ async function logout() {
           <button class="side-toggle" :title="colapsado ? 'Expandir menú' : 'Contraer menú'" @click="toggleColapsado"><AppIcon name="menu" :size="16" /></button>
         </div>
         <nav>
-          <router-link to="/inicio" class="nav-link" active-class="act" title="Dashboard"><AppIcon name="chart" :size="17" /> <span class="nl-txt">Dashboard</span></router-link>
-          <router-link to="/activos" class="nav-link" active-class="act" title="Inventario"><AppIcon name="box" :size="17" /> <span class="nl-txt">Inventario</span></router-link>
-          <router-link to="/utiles" class="nav-link" active-class="act" title="Útiles y herramientas"><AppIcon name="panel" :size="17" /> <span class="nl-txt">Útiles</span></router-link>
-          <router-link v-if="user?.rol === 'admin'" to="/responsables" class="nav-link" active-class="act" title="Responsables"><AppIcon name="user-check" :size="17" /> <span class="nl-txt">Responsables</span></router-link>
-          <router-link v-if="user?.rol === 'admin'" to="/areas" class="nav-link" active-class="act" title="Áreas y ubicaciones"><AppIcon name="map-pin" :size="17" /> <span class="nl-txt">Áreas</span></router-link>
+          <router-link to="/inicio" @mouseenter="precargar('/inicio')" @focus="precargar('/inicio')" class="nav-link" active-class="act" title="Dashboard"><AppIcon name="chart" :size="17" /> <span class="nl-txt">Dashboard</span></router-link>
+          <router-link to="/activos" @mouseenter="precargar('/activos')" @focus="precargar('/activos')" class="nav-link" active-class="act" title="Inventario"><AppIcon name="box" :size="17" /> <span class="nl-txt">Inventario</span></router-link>
+          <router-link to="/utiles" @mouseenter="precargar('/utiles')" @focus="precargar('/utiles')" class="nav-link" active-class="act" title="Útiles y herramientas"><AppIcon name="panel" :size="17" /> <span class="nl-txt">Útiles</span></router-link>
+          <router-link v-if="user?.rol === 'admin'" to="/responsables" @mouseenter="precargar('/responsables')" @focus="precargar('/responsables')" class="nav-link" active-class="act" title="Responsables"><AppIcon name="user-check" :size="17" /> <span class="nl-txt">Responsables</span></router-link>
+          <router-link v-if="user?.rol === 'admin'" to="/areas" @mouseenter="precargar('/areas')" @focus="precargar('/areas')" class="nav-link" active-class="act" title="Áreas y ubicaciones"><AppIcon name="map-pin" :size="17" /> <span class="nl-txt">Áreas</span></router-link>
         </nav>
         <div class="side-foot">
           <div class="who-row">

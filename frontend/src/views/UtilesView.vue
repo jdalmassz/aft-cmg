@@ -12,6 +12,7 @@
  */
 import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { api, formatMoneda, getUser } from '../api'
+import { getCatalogo } from '../catalogo'
 import AppIcon from '../components/AppIcon.vue'
 import Drawer from '../components/Drawer.vue'
 import { usePreviewPdf } from '../previewPdf'
@@ -99,7 +100,7 @@ async function cargar() {
 }
 
 async function cargarCatalogo() {
-  catalogo.value = await api.get('/api/catalogo')
+  catalogo.value = await getCatalogo()
 }
 
 function aplicar() {
@@ -323,7 +324,11 @@ async function verPreview() {
   if (enMovil.value && preview.abierta) exportAbierto.value = false
 }
 
-onMounted(() => { cargarCatalogo().then(cargar).catch(() => {}) })
+// Las dos cosas a la vez: el catálogo no depende de la lista (ver catalogo.js).
+onMounted(() => {
+  cargar().catch(() => {})
+  cargarCatalogo().catch(() => {})
+})
 </script>
 
 <template>
