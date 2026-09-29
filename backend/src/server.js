@@ -130,8 +130,13 @@ async function bootstrap() {
 
   const dist = path.join(__dirname, '..', '..', 'frontend', 'dist');
   if (fs.existsSync(dist)) {
-    app.use('/assets', express.static(path.join(dist, 'assets')));
-    app.use(express.static(dist));
+    // Los ficheros de /assets llevan el hash en el nombre (index-DVqZsQlI.css):
+    // son los mismos mientras no se vuelva a construir, así que se guardan un año
+    // entero, en el navegador y en el borde de Cloudflare. Con `max-age=0` cada
+    // visita pagaba una revalidación por fichero: otra ida y vuelta de red.
+    app.use('/assets', express.static(path.join(dist, 'assets'), { maxAge: '365d', immutable: true }));
+    // El index.html es el que apunta a esos hashes: ése sí se vuelve a mirar.
+    app.use(express.static(dist, { maxAge: 0 }));
     app.use((req, res, next) => {
       if (!['GET', 'HEAD'].includes(req.method)) return next();
       if (req.path.startsWith('/api') || req.path.startsWith('/auth') || req.path.startsWith('/health')) return next();
