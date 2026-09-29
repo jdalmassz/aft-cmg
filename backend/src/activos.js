@@ -32,13 +32,18 @@ async function listActivos(req, res, next) {
   try {
     const { q, categoria, area, ubicacion, custodio, marca, estado, limite = 200, offset = 0 } = req.query;
     const from = buildWhere({ q, categoria, area, ubicacion, custodio, marca, estado, tipo: tipoDe(req), user: req.user });
-    const total = await db.getPool().query(`SELECT COUNT(*)::int AS n ${ACTIVOS_FROM} ${from.sql}`, from.params);
-    const rows = await db.getPool().query(
+    // El total y la página salen en paralelo: dos idas a la base en el mismo tiempo
+    // en vez de una detrás de otra. Los parámetros del total se copian ANTES de
+    // añadir los de LIMIT/OFFSET, que sólo los lleva la segunda consulta.
+    const paramsTotal = from.params.slice();
+    const sqlFilas =
+      `SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} ${from.sql} ORDER BY a.id ASC LIMIT ${from.p(limite)} OFFSET ${from.p(offset)}`;
+    const [total, rows] = await Promise.all([
+      db.getPool().query(`SELECT COUNT(*)::int AS n ${ACTIVOS_FROM} ${from.sql}`, paramsTotal),
       // En el mismo orden que el Excel y el PDF: `0001` arriba y el último
       // abajo. Antes salía `a.id DESC` y el más reciente encabeza la lista.
-      `SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} ${from.sql} ORDER BY a.id ASC LIMIT ${from.p(limite)} OFFSET ${from.p(offset)}`,
-      from.params
-    );
+      db.getPool().query(sqlFilas, from.params)
+    ]);
     return res.json({ total: total.rows[0].n, activos: rows.rows });
   } catch (e) { next(e); }
 }
@@ -249,6 +254,110 @@ async function getActivo(req, res, next) {
   } catch (e) { next(e); }
 }
 
+/**
+ * Un error que se contesta con su propio código (400) y no como 500.
+ */
+function rechazo(msg) {
+  const e = new Error(msg);
+  e.status = 400;
+  return e;
+}
+
+const limpioNombre = (v) => String(v || '').trim().toUpperCase();
+
+/**
+ * La ubicación de un activo, decidida por ÁREA y RESPONSABLE — nunca por el número
+ * de una ubicación elegido a ciegas.
+ *
+ * El modelo tiene una sola regla: cada ubicación es de una sola persona («ALMACEN 1»
+ * es la de ALIESKI, «ALMACEN 2» la de CARLOS). Pero en el formulario eso se veía como
+ * una lista de nombres numerados sin decir de quién es cada uno, y quien editaba un
+ * activo que estaba en el almacén no sabía cuál de los tres almacenes tocaba.
+ *
+ * Aquí se le pregunta lo que sí se sabe: ¿en qué área está? ¿y quién responde por él?
+ * La ubicación sale de ahí:
+ *
+ *  1. Si en esa área ya hay una ubicación con activos de ese responsable, se usa esa.
+ *  2. Si no, se crea la siguiente de la familia («ALMACEN 4»), con el área que le toca.
+ *  3. Sin responsable, la de la propia área si la actual sigue ahí; si no, la base
+ *     («ALMACEN»), que es la que sobra y la que absorbe la renumeración.
+ *  4. Sin área que decidir (no la mandan y la actual no tiene), no se toca nada.
+ *
+ * Devuelve `{ id }` o `null` («déjala como está»). Lanza 400 si no hay con qué decidir.
+ */
+async function resolverUbicacion(pool, { area_id, custodio_id, ubicacion_actual = null }) {
+  const areaId = area_id === undefined || area_id === null || area_id === '' ? null : Number(area_id);
+  const custoId = custodio_id === undefined || custodio_id === null || custodio_id === '' ? null : Number(custodio_id);
+
+  let area = null;
+  if (areaId) {
+    const r = await pool.query('SELECT id, nombre FROM areas WHERE id = $1', [areaId]);
+    if (!r.rowCount) throw rechazo('El área elegida no existe');
+    area = r.rows[0];
+  } else if (ubicacion_actual) {
+    const r = await pool.query(
+      `SELECT ar.id, ar.nombre FROM ubicaciones u JOIN areas ar ON ar.id = u.area_id WHERE u.id = $1`,
+      [ubicacion_actual]
+    );
+    area = r.rows[0] || null;
+  }
+
+  // Sin área no hay con qué decidir: lo que tenía se queda como estaba.
+  if (!area) {
+    if (custoId && !ubicacion_actual) throw rechazo('Elige el área donde está el activo');
+    return null;
+  }
+
+  if (custoId) {
+    const propia = await pool.query(
+      `SELECT u.id FROM ubicaciones u JOIN activos a ON a.ubicacion_id = u.id
+        WHERE u.area_id = $1 AND a.custodio_id = $2
+        GROUP BY u.id ORDER BY COUNT(a.id) DESC, u.id LIMIT 1`,
+      [area.id, custoId]
+    );
+    if (propia.rowCount) return { id: propia.rows[0].id };
+  } else if (ubicacion_actual) {
+    const r = await pool.query('SELECT id, area_id FROM ubicaciones WHERE id = $1', [ubicacion_actual]);
+    if (r.rows[0] && Number(r.rows[0].area_id) === Number(area.id)) return { id: r.rows[0].id };
+  }
+
+  const enArea = (await pool.query('SELECT id, nombre FROM ubicaciones WHERE area_id = $1 ORDER BY id', [area.id])).rows;
+
+  // La familia es el nombre del área (ALMACEN → «ALMACEN 1»…); si el área no tiene
+  // nombre, la de cualquier ubicación que ya esté dentro. Sin las dos, no se inventa.
+  const familia = limpioNombre(area.nombre) || (enArea[0] ? limpioNombre(enArea[0].nombre).replace(/\s*\d+$/, '') : '');
+  if (!familia) throw rechazo('Ese área no tiene nombre: pónle nombre en la pantalla Áreas antes de mover activos ahí');
+
+  // Sin responsable no hay persona a la que numerar: se va a la base de la familia.
+  if (!custoId) {
+    const base = enArea.find((u) => limpioNombre(u.nombre) === familia);
+    if (base) return { id: base.id };
+    return crearUbicacion(pool, familia, area.id);
+  }
+
+  const numeros = enArea
+    .filter((u) => limpioNombre(u.nombre) === familia || limpioNombre(u.nombre).startsWith(familia + ' '))
+    .map((u) => Number((limpioNombre(u.nombre).match(/(\d+)$/) || [])[1] || 0));
+  let n = Math.max(0, ...numeros) + 1;
+  let nombre = `${familia} ${n}`;
+  // El nombre es único en toda la tabla: si ya existe en otra área, se salta el número.
+  for (;;) {
+    const choque = await pool.query('SELECT 1 FROM ubicaciones WHERE nombre = $1', [nombre]);
+    if (!choque.rowCount) break;
+    n += 1;
+    nombre = `${familia} ${n}`;
+  }
+  return crearUbicacion(pool, nombre, area.id);
+}
+
+async function crearUbicacion(pool, nombre, areaId) {
+  const r = await pool.query(
+    'INSERT INTO ubicaciones (nombre, area_id) VALUES ($1, $2) RETURNING id',
+    [nombre, areaId]
+  );
+  return { id: r.rows[0].id, creada: true };
+}
+
 async function createActivo(req, res, next) {
   try {
     const b = req.body;
@@ -261,13 +370,17 @@ async function createActivo(req, res, next) {
       return res.status(403).json({ error: 'Tu sucursal no tiene datos en este sistema' });
     }
     const util = esUtil(req);
+    // Dónde queda el activo: por área y responsable, no por un número a ciegas.
+    const donde = util
+      ? null
+      : await resolverUbicacion(db.getPool(), { area_id: b.area_id, custodio_id: b.custodio_id });
     const keys = ['codigo', 'descripcion', 'marca_id', 'modelo', 'valor_cup', 'valor_usd', 'categoria_id', 'sucursal_id', 'fecha_adquisicion', 'ubicacion_id', 'custodio_id', 'estado', 'comentarios', 'tipo', 'cantidad'];
     const values = keys.map((k) => {
       if (k === 'tipo') return tipoDe(req);
       if (k === 'cantidad') return Number(b.cantidad) > 0 ? Math.trunc(Number(b.cantidad)) : 1;
       // Un útil NO tiene ubicación: va con la persona. Si llega una, se ignora en vez de
       // guardarla a medias, que es lo que haría que un día apareciera en el conteo de un área.
-      if (k === 'ubicacion_id' && util) return null;
+      if (k === 'ubicacion_id') return util ? null : (donde ? donde.id : (b.ubicacion_id ?? null));
       return b[k] ?? (k === 'estado' ? 'ACTIVO' : null);
     });
     // Cada sucursal sólo escribe en la suya: el resto no puede colar un
@@ -289,14 +402,17 @@ async function createActivo(req, res, next) {
     await registerMovimiento(db.getPool(), {
       activo_id: nuevoId,
       tipo: 'CREADO',
-      ubicacion_destino_id: util ? null : (b.ubicacion_id || null),
+      ubicacion_destino_id: util ? null : (donde ? donde.id : (b.ubicacion_id || null)),
       custodio_destino_id: b.custodio_id || null,
       estado_destino: b.estado || 'ACTIVO',
       usuario_id: req.user?.id || null
     });
     const row = await db.getPool().query(`SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} WHERE a.id = $1`, [nuevoId]);
     return res.status(201).json(row.rows[0]);
-  } catch (e) { next(e); }
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
+    next(e);
+  }
 }
 
 async function updateActivo(req, res, next) {
@@ -305,14 +421,6 @@ async function updateActivo(req, res, next) {
     // `tipo` NO se puede cambiar: un activo fijo no se convierte en un útil por editarlo.
     const allowed = ['codigo', 'descripcion', 'marca_id', 'modelo', 'valor_cup', 'valor_usd', 'categoria_id', 'sucursal_id', 'fecha_adquisicion', 'custodio_id', 'estado', 'comentarios', 'cantidad']
       .concat(esUtil(req) ? [] : ['ubicacion_id']);
-    const sets = [];
-    const params = [];
-    const p = (v) => { params.push(v); return `$${params.length}`; };
-
-    for (const k of allowed) {
-      if (k in b) { sets.push(`${k} = ${p(b[k])}`); }
-    }
-    if (!sets.length) return res.status(400).json({ error: 'Sin campos a actualizar' });
 
     // Dónde puede escribir esta persona: su sucursal, o las ocho si su rol es
     // global. Si su sucursal no está en la base, no hay nada que tocar.
@@ -331,6 +439,44 @@ async function updateActivo(req, res, next) {
       paramsPrev
     );
     if (prev.rowCount === 0) return res.status(404).json({ error: 'Activo no encontrado' });
+    const viejo = prev.rows[0];
+
+    /*
+     * DÓNDE QUEDA EL ACTIVO: por ÁREA y RESPONSABLE, nunca por un número de
+     * ubicación elegido a ciegas (ver `resolverUbicacion`).
+     *
+     * Sólo se decide cuando cambia algo de lo que depende: el área elegida o el
+     * responsable. Si alguien sólo corrige el valor o los comentarios, la
+     * ubicación no se toca — así un guardado cualquiera no reubica a nadie.
+     */
+    if (!esUtil(req)) {
+      const areaEnCuerpo = 'area_id' in b && b.area_id !== null && b.area_id !== '';
+      const cambiaResponsable = 'custodio_id' in b && Number(b.custodio_id || 0) !== Number(viejo.custodio_id || 0);
+      if (areaEnCuerpo || cambiaResponsable) {
+        let areaActual = null;
+        if (viejo.ubicacion_id) {
+          const ua = await db.getPool().query('SELECT area_id FROM ubicaciones WHERE id = $1', [viejo.ubicacion_id]);
+          areaActual = ua.rows[0]?.area_id != null ? Number(ua.rows[0].area_id) : null;
+        }
+        const areaPedida = areaEnCuerpo ? Number(b.area_id) : areaActual;
+        if (areaPedida !== areaActual || cambiaResponsable) {
+          const donde = await resolverUbicacion(db.getPool(), {
+            area_id: areaPedida,
+            custodio_id: 'custodio_id' in b ? b.custodio_id : viejo.custodio_id,
+            ubicacion_actual: viejo.ubicacion_id
+          });
+          if (donde) b.ubicacion_id = donde.id;
+        }
+      }
+    }
+
+    const sets = [];
+    const params = [];
+    const p = (v) => { params.push(v); return `$${params.length}`; };
+    for (const k of allowed) {
+      if (k in b) { sets.push(`${k} = ${p(b[k])}`); }
+    }
+    if (!sets.length) return res.status(400).json({ error: 'Sin campos a actualizar' });
 
     sets.push(`updated_at = now()`);
     params.push(req.params.id);
@@ -338,7 +484,7 @@ async function updateActivo(req, res, next) {
     const upd = await db.getPool().query(`UPDATE activos SET ${sets.join(', ')} WHERE id = $${params.length}`, params);
     if (upd.rowCount === 0) return res.status(404).json({ error: 'No encontrado' });
 
-    const old = prev.rows[0];
+    const old = viejo;
     const novo = {
       ubicacion_id: b.ubicacion_id ?? old.ubicacion_id,
       custodio_id: b.custodio_id ?? old.custodio_id,
@@ -357,7 +503,10 @@ async function updateActivo(req, res, next) {
 
     const r = await db.getPool().query(`SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} WHERE a.id = $1`, [req.params.id]);
     return res.json(r.rows[0]);
-  } catch (e) { next(e); }
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
+    next(e);
+  }
 }
 
 async function deleteActivo(req, res, next) {
@@ -494,5 +643,5 @@ async function dashboard(req, res, next) {
 
 module.exports = {
   listActivos, getActivo, createActivo, updateActivo, deleteActivo, catalogo, dashboard, exportActivos,
-  writeActivosSheet, writeCategoriaSheet
+  writeActivosSheet, writeCategoriaSheet, resolverUbicacion
 };
