@@ -41,7 +41,7 @@ const guardando = ref(false)
 
 const exportando = ref(false)
 const exportAbierto = ref(false)
-const exportar_ = ref({ formato: 'pdf', responsable: '', separar: '1', numero: '', periodo: '' })
+const exportar_ = ref({ formato: 'pdf', responsable: '', numero: '', periodo: '' })
 
 const drawerAbierto = ref(false)
 const utilSel = ref(null)
@@ -103,11 +103,21 @@ async function cargarCatalogo() {
   catalogo.value = await getCatalogo()
 }
 
+// Se busca al escribir: no hay que dar Enter ni pulsar «Filtrar». Se espera un
+// poco para no pedir la lista con cada tecla; Enter sigue buscando al momento.
+let tBusqueda = null
+
 function aplicar() {
+  clearTimeout(tBusqueda)
   pagina.value = 1
   filtrosAplicados.value = { q: q.value.trim(), categoria: fCategoria.value, custodio: fResponsable.value, estado: fEstado.value }
   cargar()
 }
+
+watch(q, () => {
+  clearTimeout(tBusqueda)
+  tBusqueda = setTimeout(aplicar, 350)
+})
 
 function limpiar() {
   q.value = ''; fCategoria.value = ''; fResponsable.value = ''; fEstado.value = ''
@@ -239,7 +249,7 @@ const mqMovil = window.matchMedia('(max-width: 640px)')
 const enMovil = ref(mqMovil.matches)
 const onMovil = (e) => { enMovil.value = e.matches }
 mqMovil.addEventListener('change', onMovil)
-onBeforeUnmount(() => mqMovil.removeEventListener('change', onMovil))
+onBeforeUnmount(() => { clearTimeout(tBusqueda); mqMovil.removeEventListener('change', onMovil) })
 
 function abrirExport(formato) {
   exportar_.value = { ...exportar_.value, formato, responsable: filtrosAplicados.value.custodio || '' }
@@ -251,19 +261,18 @@ function abrirExport(formato) {
 // y la descarga sean exactamente el mismo documento.
 function paramsExport() {
   const c = exportar_.value
+  const pdf = c.formato === 'pdf'
   const params = new URLSearchParams()
-  if (c.responsable) params.set('custodio', c.responsable)
-  // El único corte que tiene sentido aquí es el responsable: un útil no está en
-  // ninguna parte, está con alguien.
-  if (c.separar) params.set('separar', 'responsable')
-  if (c.formato === 'pdf' && c.numero) params.set('conteo', c.numero)
-  if (c.formato === 'pdf' && c.periodo.trim()) params.set('periodo', c.periodo.trim())
+  // El Excel es el listado entero: no lleva selección. Sólo el PDF se acota.
+  if (pdf && c.responsable) params.set('custodio', c.responsable)
+  if (pdf && c.numero) params.set('conteo', c.numero)
+  if (pdf && c.periodo.trim()) params.set('periodo', c.periodo.trim())
   return params
 }
 
 function nombreExport() {
   const c = exportar_.value
-  const quien = c.responsable ? '-' + nome(catalogo.value.custodios, c.responsable).replace(/\s+/g, '_') : ''
+  const quien = c.formato === 'pdf' && c.responsable ? '-' + nome(catalogo.value.custodios, c.responsable).replace(/\s+/g, '_') : ''
   return 'Utiles-y-herramientas' + quien + '-' + new Date().toISOString().slice(0, 10) + (c.formato === 'pdf' ? '.pdf' : '.xlsx')
 }
 
@@ -339,7 +348,7 @@ onMounted(() => {
         <p class="muted">{{ total }} registro(s) — lo que tiene cada responsable · <span class="hint">toca una fila para ver el detalle</span></p>
       </div>
       <span class="btns">
-        <button class="btn sec sm" @click="abrirExport('excel')" title="Listado en Excel, por responsable"><AppIcon name="file" :size="15" /> Excel</button>
+        <button class="btn sec sm" @click="abrirExport('excel')" title="Listado entero en Excel, sin elegir nada"><AppIcon name="file" :size="15" /> Excel</button>
         <button class="btn sec sm" :disabled="!total" @click="abrirExport('pdf')" title="Hoja de conteo en PDF, por responsable"><AppIcon name="file" :size="15" /> PDF</button>
         <button class="btn sm" @click="abrirNuevo"><AppIcon name="plus" :size="15" /> Nuevo útil</button>
       </span>
@@ -514,23 +523,17 @@ onMounted(() => {
 
     <!-- Exportar -->
     <Drawer :open="exportAbierto" :titulo="exportar_.formato === 'pdf' ? 'Hoja de conteo (PDF)' : 'Listado (Excel)'" :ancho="380" @close="cerrarExport">
-      <div class="form">
+      <!-- El PDF se puede acotar a una persona; el Excel es el listado entero. -->
+      <div v-if="exportar_.formato === 'pdf'" class="form">
         <div class="field"><label>Responsable</label>
           <select v-model="exportar_.responsable" class="select"><option value="">Todos los responsables</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
+          <small v-if="exportar_.responsable" class="muted">Sale sólo lo suyo. Si son varios, cada uno en su página con su firma.</small>
+          <small v-else class="muted">Salen todos, cada uno en su página con su firma.</small>
         </div>
-        <div class="field"><label>Separar</label>
-          <select v-model="exportar_.separar" class="select">
-            <option value="">Todo junto</option>
-            <option value="1">Cada responsable por separado</option>
-          </select>
-          <small v-if="exportar_.separar" class="muted">{{ exportar_.formato === 'pdf' ? 'Sus propias páginas, con su firma,' : 'Una hoja del libro' }} por responsable.</small>
-        </div>
-        <template v-if="exportar_.formato === 'pdf'">
-          <div class="field"><label>No. de conteo</label><input v-model="exportar_.numero" class="input" inputmode="numeric" placeholder="Opcional" /></div>
-          <div class="field"><label>Período</label><input v-model="exportar_.periodo" class="input" placeholder="En blanco = mes actual" /></div>
-        </template>
+        <div class="field"><label>No. de conteo</label><input v-model="exportar_.numero" class="input" inputmode="numeric" placeholder="Opcional" /></div>
+        <div class="field"><label>Período</label><input v-model="exportar_.periodo" class="input" placeholder="En blanco = mes actual" /></div>
       </div>
-      <p class="muted nota">{{ exportar_.formato === 'pdf' ? 'Salen sólo los que están en estado ACTIVO, agrupados por responsable.' : 'Mismas columnas que el inventario, sin ubicación y con la cantidad.' }}</p>
+      <p class="muted nota">{{ exportar_.formato === 'pdf' ? 'Sólo los que están en estado ACTIVO, agrupados por responsable. Se imprime desde la vista previa.' : 'Sale todo el listado, sin filtrar: mismas columnas que el inventario, con la cantidad.' }}</p>
       <template #pie>
         <button class="btn sec" @click="cerrarExport">Cancelar</button>
         <button v-if="exportar_.formato === 'pdf'" class="btn sec" :disabled="preview.cargando || !total" title="Ver la hoja antes de descargarla" @click="verPreview">
