@@ -99,6 +99,7 @@ function styleHeaderRow(row) {
   });
 }
 
+// En la exportación la ubicación sale sin el número: «COMERCIAL 1» es «COMERCIAL».
 const valoresFila = (a, util) => [
   a.codigo ?? null,
   a.descripcion ?? null,
@@ -109,7 +110,7 @@ const valoresFila = (a, util) => [
   a.categoria ?? null,
   a.sucursal ?? null,
   a.fecha_adquisicion ?? null,
-  ...(util ? [] : [a.ubicacion ?? null]),
+  ...(util ? [] : [a.ubicacion ? a.ubicacion.replace(/\s*\d+$/, '') : null]),
   a.custodio ?? null,
   a.valor_usd == null ? null : Number(a.valor_usd),
   a.comentarios ?? null
