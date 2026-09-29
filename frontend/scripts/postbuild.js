@@ -58,7 +58,7 @@ const adelanto = `<script>
   if (!fichero) return;
   var l = document.createElement('link');
   l.rel = 'modulepreload';
-  l.href = '/' + fichero;
+  l.href = '/assets/' + fichero;
   document.head.appendChild(l);
 })();
 </script>`
