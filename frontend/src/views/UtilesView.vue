@@ -13,6 +13,7 @@
 import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { api, formatMoneda, getUser } from '../api'
 import { getCatalogo } from '../catalogo'
+import { construirDocumento, imprimirDocumento } from '../imprimir'
 import AppIcon from '../components/AppIcon.vue'
 import Drawer from '../components/Drawer.vue'
 import { usePreviewPdf } from '../previewPdf'
@@ -40,6 +41,7 @@ const formulario = ref({})
 const guardando = ref(false)
 
 const exportando = ref(false)
+const imprimiendo = ref(false)
 const exportAbierto = ref(false)
 const exportar_ = ref({ formato: 'pdf', responsable: '', numero: '', periodo: '' })
 
@@ -274,6 +276,25 @@ function nombreExport() {
   const c = exportar_.value
   const quien = c.formato === 'pdf' && c.responsable ? '-' + nome(catalogo.value.custodios, c.responsable).replace(/\s+/g, '_') : ''
   return 'Utiles-y-herramientas' + quien + '-' + new Date().toISOString().slice(0, 10) + (c.formato === 'pdf' ? '.pdf' : '.xlsx')
+}
+
+// El .xlsx no lo imprime el navegador: esto imprime el listado entero, con las
+// mismas columnas, en una hoja limpia (y desde el diálogo, en PDF).
+async function imprimirListado() {
+  if (imprimiendo.value) return
+  imprimiendo.value = true
+  try {
+    const res = await api.get('/api/utiles?limite=100000&offset=0')
+    imprimirDocumento(construirDocumento({
+      titulo: 'Útiles y Herramientas en Uso',
+      subtitulo: `${res.total} registro(s)`,
+      columnas: [
+        { t: 'Código' }, { t: 'Descripción' }, { t: 'Marca' }, { t: 'Modelo' },
+        { t: 'Cantidad', clase: 'num' }, { t: 'Responsable' }, { t: 'Estado' }
+      ],
+      filas: res.activos.map((a) => [a.codigo, a.descripcion, a.marca, a.modelo, a.cantidad, a.custodio, a.estado])
+    }))
+  } catch (e) { err(e.message) } finally { imprimiendo.value = false }
 }
 
 async function descargar() {
@@ -533,11 +554,14 @@ onMounted(() => {
         <div class="field"><label>No. de conteo</label><input v-model="exportar_.numero" class="input" inputmode="numeric" placeholder="Opcional" /></div>
         <div class="field"><label>Período</label><input v-model="exportar_.periodo" class="input" placeholder="En blanco = mes actual" /></div>
       </div>
-      <p class="muted nota">{{ exportar_.formato === 'pdf' ? 'Sólo los que están en estado ACTIVO, agrupados por responsable. Se imprime desde la vista previa.' : 'Sale todo el listado, sin filtrar: mismas columnas que el inventario, con la cantidad.' }}</p>
+      <p class="muted nota">{{ exportar_.formato === 'pdf' ? 'Sólo los que están en estado ACTIVO, agrupados por responsable. Se imprime desde la vista previa.' : 'Sale todo el listado, sin filtrar: mismas columnas que el inventario, con la cantidad. «Imprimir» abre una hoja limpia con el listado.' }}</p>
       <template #pie>
         <button class="btn sec" @click="cerrarExport">Cancelar</button>
         <button v-if="exportar_.formato === 'pdf'" class="btn sec" :disabled="preview.cargando || !total" title="Ver la hoja antes de descargarla" @click="verPreview">
           <AppIcon name="eye" :size="15" /> {{ preview.cargando ? 'Generando…' : 'Vista previa' }}
+        </button>
+        <button v-if="exportar_.formato !== 'pdf'" class="btn sec" :disabled="imprimiendo" title="Listado en papel o en PDF, sin filtros" @click="imprimirListado">
+          <AppIcon name="printer" :size="15" /> {{ imprimiendo ? 'Preparando…' : 'Imprimir' }}
         </button>
         <button class="btn" :disabled="exportando" @click="descargar"><AppIcon name="file" :size="15" /> {{ exportando ? 'Generando…' : 'Descargar' }}</button>
       </template>

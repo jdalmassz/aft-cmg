@@ -3,6 +3,7 @@ import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import QRCode from 'qrcode'
 import { api, formatMoneda, getUser } from '../api'
 import { getCatalogo, invalidarCatalogo } from '../catalogo'
+import { construirDocumento, imprimirDocumento } from '../imprimir'
 import AppIcon from '../components/AppIcon.vue'
 import Drawer from '../components/Drawer.vue'
 import { usePreviewPdf } from '../previewPdf'
@@ -43,6 +44,7 @@ const formulario = ref({})
 const guardando = ref(false)
 
 const exportandoPdf = ref(false)
+const imprimiendo = ref(false)
 const conteoAbierto = ref(false)
 const conteo = ref({ formato: 'pdf', area: '', responsable: '', numero: '', periodo: '' })
 const qrAbierto = ref(false)
@@ -328,6 +330,26 @@ async function exportar() {
     ok(pdf ? 'Hoja de conteo físico exportada a PDF' : 'Inventario exportado a Excel')
     cerrarConteo()
   } catch (e) { err(e.message) } finally { exportandoPdf.value = false }
+}
+
+// El .xlsx no lo imprime el navegador: eso lo hace la hoja de cálculo. Aquí se
+// imprime el listado entero, con las mismas columnas, en una hoja limpia (y desde
+// el diálogo se puede guardar en PDF).
+async function imprimirListado() {
+  if (imprimiendo.value) return
+  imprimiendo.value = true
+  try {
+    const res = await api.get('/api/activos?limite=100000&offset=0')
+    imprimirDocumento(construirDocumento({
+      titulo: 'Inventario de Activos Fijos',
+      subtitulo: `${res.total} registro(s) · ${sucursalTexto.value}`,
+      columnas: [
+        { t: 'Código' }, { t: 'Descripción' }, { t: 'Marca' }, { t: 'Modelo' },
+        { t: 'Área' }, { t: 'Responsable' }, { t: 'Estado' }
+      ],
+      filas: res.activos.map((a) => [a.codigo, a.descripcion, a.marca, a.modelo, a.area, a.custodio, a.estado])
+    }))
+  } catch (e) { err(e.message) } finally { imprimiendo.value = false }
 }
 
 // Vista previa: el MISMO PDF que se descargaría, enseñado en su propio cajón,
@@ -682,11 +704,14 @@ onMounted(() => {
         <div class="field"><label>No. de conteo</label><input v-model="conteo.numero" class="input" inputmode="numeric" placeholder="Opcional" /></div>
         <div class="field"><label>Período</label><input v-model="conteo.periodo" class="input" placeholder="En blanco = mes actual (p. ej. Septiembre / 2026)" /></div>
       </div>
-      <p class="muted nota">{{ conteo.formato === 'pdf' ? 'Sólo los activos de esa área y de ese responsable, en estado ACTIVO. Se imprime desde la vista previa.' : 'Sale todo el inventario, sin filtrar: mismo formato que «Control de AFT cmg rev01.xlsx».' }}</p>
+      <p class="muted nota">{{ conteo.formato === 'pdf' ? 'Sólo los activos de esa área y de ese responsable, en estado ACTIVO. Se imprime desde la vista previa.' : 'Sale todo el inventario, sin filtrar: mismo formato que «Control de AFT cmg rev01.xlsx». «Imprimir» abre una hoja limpia con el listado.' }}</p>
       <template #pie>
         <button class="btn sec" @click="cerrarConteo">Cancelar</button>
         <button v-if="conteo.formato === 'pdf'" class="btn sec" :disabled="preview.cargando || !listoParaPdf" title="Ver la hoja antes de descargarla" @click="verPreview">
           <AppIcon name="eye" :size="15" /> {{ preview.cargando ? 'Generando…' : 'Vista previa' }}
+        </button>
+        <button v-if="conteo.formato !== 'pdf'" class="btn sec" :disabled="imprimiendo" title="Listado en papel o en PDF, sin filtros" @click="imprimirListado">
+          <AppIcon name="printer" :size="15" /> {{ imprimiendo ? 'Preparando…' : 'Imprimir' }}
         </button>
         <button class="btn" :disabled="exportandoPdf || !listoParaPdf" @click="exportar"><AppIcon name="file" :size="15" /> {{ exportandoPdf ? 'Generando…' : (conteo.formato === 'pdf' ? 'Descargar PDF' : 'Descargar Excel') }}</button>
       </template>
