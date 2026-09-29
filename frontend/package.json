@@ -5,11 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/postbuild.js",
     "preview": "vite preview"
   },
   "dependencies": {
-    "axios": "^1.20.0",
     "qrcode": "^1.5.4",
     "vue": "^3.5.41",
     "vue-router": "^4.6.3"

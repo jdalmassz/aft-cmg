@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import App from './App.vue'
 import { getUser, fetchMe } from './api'
+import { getCatalogo } from './catalogo'
 import './style.css'
 
 const Login = () => import('./views/LoginView.vue')
@@ -43,5 +44,11 @@ router.beforeEach(async (to) => {
   if (to.meta.admin && getUser()?.rol !== 'admin') return { path: '/inicio' }
   return true
 })
+
+// El catálogo lo necesitan casi todas las pantallas: se pide mientras el router
+// resuelve la ruta, así la primera pantalla ya lo tiene cuando monta y no hay
+// que esperar a que ella lo pida (en la pantalla de login no se pide: allí no
+// hay sesión todavía y el 401 mandaría a /login otra vez).
+if (getUser()) getCatalogo().catch(() => {})
 
 createApp(App).use(router).mount('#app')
