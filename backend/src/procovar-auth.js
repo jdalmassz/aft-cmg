@@ -151,12 +151,40 @@ const ROLES_ACCESOS = [
   'ADMINISTRADOR',
   'SUPERVISOR',
   'GESTOR',
-  'OPERADOR'
+  'OPERADOR',
+  // Entraron el 30/09/2026. ECONOMICA es quien lleva el inventario de activos fijos de
+  // su sucursal; ANALISTA todavía no tiene permisos puestos en Accesos.
+  'ECONOMICA',
+  'ANALISTA'
 ];
 
 // Ojo con ADMINISTRADOR: es de UNA sucursal. Cualquier comprobación del tipo
 // «¿contiene admin?» le daría las ocho, y ésa es la fuga.
 const ROLES_TODAS_LAS_SUCURSALES = new Set(['DESARROLLADOR', 'SUPER ADMIN']);
+
+/**
+ * Quién puede ADMINISTRAR aquí: el catálogo (áreas, ubicaciones, responsables).
+ *
+ * Es una lista DISTINTA de la de arriba, y ésa es toda la gracia. Hasta hoy había una
+ * sola bandera —`rol === 'admin'`— que significaba las dos cosas a la vez: «puede
+ * administrar» y «ve las ocho sucursales». Por eso sólo administraban DESARROLLADOR y
+ * SUPER ADMIN, y Junior, que es ADMINISTRADOR de Camagüey y es quien lleva el
+ * inventario, no podía crear ni un área.
+ *
+ * Mezclarlas es exactamente la fuga contra la que avisa el CLAUDE.md de Procovar:
+ * «ADMINISTRADOR es de UNA sucursal; cualquier comprobación del tipo *¿contiene admin?*
+ * le da las ocho». Separadas, un administrador de sucursal administra LO SUYO y sigue
+ * sin ver Holguín.
+ *
+ * Esta lista es la misma que lleva `aft.manage` en Accesos. Si allí se le da o se le
+ * quita a un rol, hay que tocarla aquí — AFT recibe el nombre del rol, no sus permisos.
+ */
+const ROLES_QUE_ADMINISTRAN = new Set([
+  ...ROLES_TODAS_LAS_SUCURSALES,
+  'ADMINISTRADOR',
+  'GERENTE',
+  'ECONOMICA'
+]);
 
 function normalizaRol(rol) {
   if (!rol) return null;
@@ -169,7 +197,33 @@ function normalizaRol(rol) {
 function rolInterno(rol) {
   const r = normalizaRol(rol);
   if (!r) return 'usuario'; // rol desconocido o vacío → el de menos permisos
-  return ROLES_TODAS_LAS_SUCURSALES.has(r) ? 'admin' : 'usuario';
+  return ROLES_QUE_ADMINISTRAN.has(r) ? 'admin' : 'usuario';
+}
+
+/**
+ * De todos los roles que trae una persona, el MÁS CAPAZ que este sistema reconozca.
+ *
+ * Coger el primero de la lista dejaba el resultado a merced del orden en que vinieran.
+ * Y es un caso real, no teórico: a Arais se le añadió ECONOMICA **encima** de su
+ * SUPERVISOR para no quitarle lo que ya usaba en otras aplicaciones, así que llega con
+ * los dos. Con «el primero», el SUPERVISOR se comía al ECONOMICA y seguía sin poder
+ * crear un área.
+ *
+ * Los permisos se SUMAN: quien lleva dos roles puede lo de los dos.
+ */
+function rolMasCapaz(candidatos) {
+  let mejor = null;
+  for (const c of candidatos || []) {
+    const r = normalizaRol(c);
+    if (!r) continue;
+    if (!mejor) { mejor = r; continue; }
+    // Ve las ocho > administra > el resto.
+    const gana = (a, b) =>
+      (ROLES_TODAS_LAS_SUCURSALES.has(a) && !ROLES_TODAS_LAS_SUCURSALES.has(b)) ||
+      (ROLES_QUE_ADMINISTRAN.has(a) && !ROLES_QUE_ADMINISTRAN.has(b));
+    if (gana(r, mejor)) mejor = r;
+  }
+  return mejor;
 }
 
 // Los que ven las ocho sucursales (y por tanto también Camagüey).
@@ -180,6 +234,8 @@ function rolVeTodasLasSucursales(rol) {
 }
 
 module.exports = {
+  rolMasCapaz,
+  ROLES_QUE_ADMINISTRAN,
   AUTH_URL,
   CLIENT_ID,
   SSO_COOKIE,

@@ -24,11 +24,22 @@ function sucursalDe(user) {
   return null;
 }
 
-// El rol interno 'admin' sólo lo tienen DESARROLLADOR y SUPER ADMIN (los que
-// ven las ocho sucursales) y el admin local: la traducción vive en
-// procovar-auth.js, aquí no se decide nada de roles.
+/**
+ * Quién ve las OCHO sucursales. Sólo DESARROLLADOR y SUPER ADMIN.
+ *
+ * Esto miraba el rol interno `admin`, y funcionaba mientras `admin` significara
+ * exactamente «DESARROLLADOR o SUPER ADMIN». Desde que un ADMINISTRADOR de sucursal o
+ * una ECONOMICA también son `admin` —para poder administrar LO SUYO—, deducirlo de ahí
+ * les habría dado las ocho de golpe. Es la fuga del CLAUDE.md, y por eso ahora se mira
+ * el rol DE ACCESOS, que es el que dice a qué sucursal pertenece la persona.
+ *
+ * Sin `rol_accesos` es una cuenta local (la de Camagüey, sin correo): ahí su `admin` es
+ * el de siempre y se respeta.
+ */
 function veTodasLasSucursales(user) {
-  return !!user && user.rol === 'admin';
+  if (!user) return false;
+  if (user.rol_accesos) return sso.rolVeTodasLasSucursales(user.rol_accesos);
+  return user.rol === 'admin';
 }
 
 // Condición SQL que tiene que cumplir un activo para que ese usuario lo vea.
