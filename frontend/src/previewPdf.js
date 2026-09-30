@@ -52,9 +52,27 @@ export function usePreviewPdf() {
       a.remove()
     },
 
-    // Un clic, un diálogo de impresión. El PDF se carga en un marco oculto y se
-    // imprime desde ahí; `window.print()` de aquí imprimiría la pantalla, no la hoja.
-    imprimir() {
+    /**
+     * Un clic, un diálogo, y con los datos dentro.
+     *
+     * Se imprime EL VISOR QUE YA ESTÁ EN PANTALLA. Es la única forma fiable: ese marco
+     * lleva el PDF dibujado y paginado desde que se abrió la vista previa, así que lo
+     * que sale por la impresora es exactamente lo que se está mirando.
+     *
+     * Montar un marco aparte para imprimir es lo que dejó la hoja en blanco: el visor
+     * del navegador necesita estar dibujado para imprimir, y uno recién creado todavía
+     * no lo está. Se queda de respaldo para quien llame sin visor, y `window.print()`
+     * no vale porque imprimiría la pantalla de la aplicación.
+     */
+    imprimir(visor) {
+      const w = visor && visor.contentWindow
+      if (w) {
+        try {
+          w.focus()
+          w.print()
+          return
+        } catch (_) { /* el navegador no deja: se cae al respaldo */ }
+      }
       if (preview.url) imprimirPdf(preview.url)
     },
 

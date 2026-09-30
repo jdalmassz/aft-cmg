@@ -40,12 +40,26 @@ export function construirDocumento({ titulo, subtitulo, columnas, filas, pie }) 
 </body></html>`
 }
 
-/** El marco oculto donde se imprime. Nunca la pantalla de la aplicación. */
-function marcoOculto() {
+/**
+ * El marco oculto donde se imprime. Nunca la pantalla de la aplicación.
+ *
+ * `pdf` cambia CÓMO se esconde, y no es un detalle: un PDF lo dibuja el visor del
+ * navegador, y un visor metido en un marco de 1x1 con `opacity:0` no llega a dibujar
+ * nada — manda a la impresora una hoja EN BLANCO. Pasó el 30/09/2026 al cambiar la
+ * impresión de la vista previa: salía el diálogo a la primera, y salía vacío.
+ *
+ * Para un PDF hace falta tamaño de hoja de verdad, así que se esconde SACÁNDOLO de la
+ * pantalla en vez de encogiéndolo. Nada de `opacity`, `visibility` ni `display:none`:
+ * las tres apagan el dibujado y vuelven a dejar la hoja en blanco.
+ *
+ * Para HTML da igual: ahí el motor de impresión rehace la maquetación por su cuenta.
+ */
+function marcoOculto({ pdf = false } = {}) {
   const marco = document.createElement('iframe')
   marco.setAttribute('aria-hidden', 'true')
-  // No display:none: algunos navegadores se saltan la impresión de un iframe oculto.
-  marco.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;opacity:0;border:0'
+  marco.style.cssText = pdf
+    ? 'position:fixed;left:-10000px;top:0;width:816px;height:1056px;border:0'
+    : 'position:fixed;right:0;bottom:0;width:1px;height:1px;opacity:0;border:0'
   return marco
 }
 
@@ -100,7 +114,7 @@ export function imprimirDocumento(html) {
  * pero como respaldo, no como camino normal.
  */
 export function imprimirPdf(url) {
-  const marco = marcoOculto()
+  const marco = marcoOculto({ pdf: true })
   let hecho = false
   marco.addEventListener('load', () => {
     if (hecho) return
