@@ -523,8 +523,38 @@ async function deleteActivo(req, res, next) {
   } catch (e) { next(e); }
 }
 
+/**
+ * EL CATÁLOGO TAMBIÉN TIENE ALCANCE. Es lo que alimenta todos los desplegables.
+ *
+ * Aquí no había ninguno: a cualquiera que entrara por Accesos —fuera de la sucursal que
+ * fuera— se le mandaban las seis áreas de Camagüey, sus cubículos, **todos los
+ * responsables con nombre y apellidos**, las marcas, y encima `responsablesPorArea`, que
+ * dice cuántos activos tiene cada persona. El inventario sí estaba filtrado y salía
+ * vacío, así que la pantalla parecía correcta; los nombres viajaban igual en la
+ * respuesta del catálogo.
+ *
+ * Un dato que no se pinta no es un dato que no se manda. Lo encontró Jose el 30/09/2026
+ * con «todo el mundo va a ver Camagüey», y tenía razón: no en el inventario, aquí.
+ *
+ * Lo que se puede recortar HOY es `responsablesPorArea`, que sale de `activos` y por
+ * tanto tiene sucursal. Las áreas, ubicaciones, responsables, marcas y categorías **no
+ * tienen `sucursal_id`** —son tablas globales, AFT nació de una sola sucursal—, así que
+ * a quien no es de aquí se le devuelven VACÍAS: es lo único honesto mientras no exista
+ * la columna. Cuando entre el multi-sucursal, esto pasa a filtrar por la suya en vez de
+ * vaciar. Ver `Pendiente/AFT` en la bóveda.
+ */
 async function catalogo(req, res, next) {
   try {
+    // Quien no ve ninguna sucursal de esta base no ve tampoco sus nombres propios.
+    const alc = await alcance.alcanceEscritura(db.getPool(), req.user);
+    if (!alc) {
+      return res.json({
+        categorias: [], sucursales: [], areas: [], ubicaciones: [],
+        custodios: [], marcas: [], responsablesPorArea: []
+      });
+    }
+    const qResp = { params: [], p: (v) => { qResp.params.push(v); return `$${qResp.params.length}`; } };
+    const cResp = alcance.condicionSucursal(req.user, qResp.p);
     const [categorias, sucursales, areas, ubicaciones, custodios, marcas, respArea] = await Promise.all([
       db.getPool().query('SELECT id, nombre, ejemplos FROM categorias ORDER BY nombre'),
       db.getPool().query('SELECT id, nombre FROM sucursales ORDER BY nombre'),
@@ -539,9 +569,9 @@ async function catalogo(req, res, next) {
           FROM activos a
           JOIN ubicaciones u ON u.id = a.ubicacion_id
           JOIN custodios c ON c.id = a.custodio_id
-         WHERE a.tipo = 'AFT' AND a.estado = 'ACTIVO'
+         WHERE a.tipo = 'AFT' AND a.estado = 'ACTIVO'${cResp ? ` AND ${cResp}` : ''}
          GROUP BY u.area_id, a.custodio_id, c.nombre
-         ORDER BY c.nombre`)
+         ORDER BY c.nombre`, qResp.params)
     ]);
     return res.json({
       categorias: categorias.rows,
