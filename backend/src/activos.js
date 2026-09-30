@@ -435,8 +435,16 @@ async function updateActivo(req, res, next) {
     // para ella (404). Así `/utiles/7` no actualiza el activo fijo 7.
     const paramsPrev = [req.params.id, tipoDe(req)];
     const condPrev = alcance.condicionSucursal(req.user, (v) => { paramsPrev.push(v); return `$${paramsPrev.length}`; });
+    // `activos a` CON ALIAS, y no es cosmético: `condicionSucursal` escribe
+    // `a.sucursal_id …` porque su alias por defecto es `a`. Sin aliasear aquí, Postgres
+    // contestaba `missing FROM-clause entry for table "a"` y el guardado reventaba.
+    //
+    // No se veía desde una cuenta global —un DESARROLLADOR o un SUPER ADMIN no llevan
+    // condición de sucursal, así que la consulta salía limpia— ni desde una cuenta sin
+    // sucursal, que devuelve `FALSE` y tampoco nombra la tabla. Reventaba justo para
+    // quien SÍ tiene sucursal: Junior y Arais no podían editar ni un activo.
     const prev = await db.getPool().query(
-      `SELECT id, ubicacion_id, custodio_id, estado FROM activos WHERE id = $1 AND tipo = $2${condPrev ? ` AND ${condPrev}` : ''}`,
+      `SELECT a.id, a.ubicacion_id, a.custodio_id, a.estado FROM activos a WHERE a.id = $1 AND a.tipo = $2${condPrev ? ` AND ${condPrev}` : ''}`,
       paramsPrev
     );
     if (prev.rowCount === 0) return res.status(404).json({ error: 'Activo no encontrado' });
@@ -514,8 +522,10 @@ async function deleteActivo(req, res, next) {
   try {
     const params = [req.params.id, tipoDe(req)];
     const cond = alcance.condicionSucursal(req.user, (v) => { params.push(v); return `$${params.length}`; });
+    // Mismo alias y por lo mismo que en `updateActivo`: sin él, `a.sucursal_id` no
+    // resuelve y el borrado falla para todo el que tenga sucursal.
     const r = await db.getPool().query(
-      `DELETE FROM activos WHERE id = $1 AND tipo = $2${cond ? ` AND ${cond}` : ''} RETURNING id`,
+      `DELETE FROM activos a WHERE a.id = $1 AND a.tipo = $2${cond ? ` AND ${cond}` : ''} RETURNING a.id`,
       params
     );
     if (r.rowCount === 0) return res.status(404).json({ error: 'Activo no encontrado' });
