@@ -49,7 +49,9 @@ function metaFrom(req, extra = {}) {
     responsableAreaSel: extra.responsableAreaSel || '',
     conteo: q.conteo || '',
     periodo: q.periodo || periodoActual(),
-    generadoPor: q.generadoPor || req.user?.nombre || req.user?.username || '',
+    // El responsable enganchado a su usuario manda sobre el nombre de la cuenta: en
+    // la hoja hacen falta nombre y apellidos, no el usuario con el que entra.
+    generadoPor: extra.generadoPor || q.generadoPor || req.user?.nombre || req.user?.username || '',
     // Cada ubicación o cada responsable en sus páginas, con sus propias firmas
     separar: util
       ? 'responsable'
@@ -153,13 +155,28 @@ function drawFooter(doc, y) {
   // Si la hoja no es de una sola persona se firma con el responsable del área: el
   // que se eligió a mano en la hoja de conteo, o si no, el de más activos del área.
   const delArea = doc._meta.responsableAreaSel || doc._meta.responsableArea || '';
-  const lineaIzq = 'Nombre(s) y Apellidos: ______________________';
+  /*
+   * LOS DOS NOMBRES SALEN PUESTOS. Lo que queda por hacer a mano es firmar.
+   *
+   * El de la derecha —quien responde de los activos— ya venía relleno cuando se sabía
+   * quién es. El de la izquierda —quien hace el conteo— salía SIEMPRE en blanco, y es
+   * el que menos sentido tenía dejar vacío: lo está haciendo quien acaba de pulsar el
+   * botón, y el sistema sabe su nombre desde que entró. «Que no tengan que escribir,
+   * así es firmar solamente» (Jose, 30/09/2026).
+   *
+   * Si por lo que sea no hay nombre, vuelve la raya: una hoja con un hueco se rellena
+   * a bolígrafo, pero una con el nombre equivocado se firma sin mirar.
+   */
+  const quienCuenta = (doc._meta.generadoPor || '').trim();
+  const lineaIzq = `Nombre(s) y Apellidos: ${quienCuenta || '______________________'}`;
   const lineaDer = `Nombre(s) y Apellidos: ${resp || delArea || '______________________'}`;
   // Un nombre largo no se corta: si no cabe en la mitad de la página, baja el
-  // tamaño de la letra (las dos mitades juntas, para que queden parejas).
+  // tamaño de la letra (las dos mitades juntas, para que queden parejas). Se miden
+  // LAS DOS: antes sólo se miraba la derecha, y desde que la izquierda también lleva
+  // nombre puede ser ella la que no quepa.
   doc.font('Helvetica').fontSize(9);
   let tam = 9;
-  while (tam > 6.5 && doc.widthOfString(lineaDer) > w) {
+  while (tam > 6.5 && Math.max(doc.widthOfString(lineaIzq), doc.widthOfString(lineaDer)) > w) {
     tam -= 0.5;
     doc.fontSize(tam);
   }
@@ -355,12 +372,28 @@ async function exportActivosPdf(req, res, next) {
       from.params
     );
 
-    const [ar, ub, cu, ra] = await Promise.all([
+    const [ar, ub, cu, ra, quienCuenta] = await Promise.all([
       area ? pool.query(`SELECT ${AREA_ETIQUETA} AS etiqueta FROM areas ar WHERE ar.id = $1`, [area]) : null,
       ubicacion ? pool.query('SELECT id, nombre FROM ubicaciones WHERE id = $1', [ubicacion]) : null,
       custodio ? pool.query('SELECT nombre FROM custodios WHERE id = $1', [custodio]) : null,
       // Quien se eligió a mano para firmar como responsable del área.
-      req.query.resp_area ? pool.query('SELECT nombre FROM custodios WHERE id = $1', [req.query.resp_area]) : null
+      req.query.resp_area ? pool.query('SELECT nombre FROM custodios WHERE id = $1', [req.query.resp_area]) : null,
+      /*
+       * EL NOMBRE COMPLETO DE QUIEN ESTÁ CONTANDO, para que no tenga que escribirlo.
+       *
+       * Sale del RESPONSABLE enganchado a su usuario (`custodios.user_id`) y no del
+       * campo `nombre` de la cuenta, porque ahí está el nombre con el que entra —
+       * «arais», «Junior», «admin»— y eso en una hoja que se firma no vale: quien la
+       * recibe necesita nombre y apellidos. `custodios` los tiene bien escritos porque
+       * son los mismos que salen en todo el inventario.
+       *
+       * Sin responsable enganchado se cae al nombre de la cuenta, y si tampoco, la
+       * hoja sale con la raya para rellenar a mano. Una hoja con un hueco se rellena;
+       * una con el nombre equivocado se firma sin mirar.
+       */
+      req.user?.id
+        ? pool.query('SELECT nombre FROM custodios WHERE user_id = $1 LIMIT 1', [req.user.id])
+        : null
     ]).then((rs) => rs.map((r) => r?.rows[0] || null));
 
     const meta = metaFrom(req, {
@@ -368,7 +401,8 @@ async function exportActivosPdf(req, res, next) {
       area: ar ? ar.etiqueta : '',
       ubicacion: ub ? ub.nombre : '',
       responsable: cu ? cu.nombre : '',
-      responsableAreaSel: ra ? ra.nombre : ''
+      responsableAreaSel: ra ? ra.nombre : '',
+      generadoPor: quienCuenta ? quienCuenta.nombre : ''
     });
     const doc = new PDFDocument({
       size: 'LETTER',
