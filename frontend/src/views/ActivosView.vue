@@ -128,6 +128,11 @@ function responsablesDe(areaId) {
  * para lo que es un solo conteo. Jose, 30/09/2026: «poder seleccionar el responsable y
  * que salga todo de ese sin necesidad del área».
  */
+// El marco del visor de la vista previa. Se le pasa a `preview.imprimir` para que
+// mande a la impresora EL PDF QUE YA ESTÁ DIBUJADO, y no uno recién montado que
+// todavía no lo está — que es lo que salía en blanco.
+const visorPdf = ref(null)
+
 const responsablesConteo = computed(() => {
   if (conteo.value.area) return responsablesDe(conteo.value.area)
   const ya = new Map()
@@ -824,12 +829,12 @@ onMounted(() => {
 
     <Drawer :open="preview.abierta" titulo="Vista previa de la hoja" subtitulo="Tal como se imprimirá" :ancho="860" clase="preview-drawer" :extra="{ '--dw-pegado': '440px' }" :sinClose="true" @close="preview.cerrar">
       <div class="preview-caja">
-        <iframe v-if="preview.url" class="preview-iframe" :src="preview.url" title="Vista previa de la hoja de conteo"></iframe>
+        <iframe v-if="preview.url" ref="visorPdf" class="preview-iframe" :src="preview.url" title="Vista previa de la hoja de conteo"></iframe>
         <div v-else class="center"><span class="spinner"></span></div>
       </div>
       <template #pie>
         <button class="btn sec" :disabled="!preview.url" @click="preview.descargar(nombreConteo())"><AppIcon name="file" :size="15" /> Exportar</button>
-        <button class="btn" :disabled="!preview.url" @click="preview.imprimir"><AppIcon name="printer" :size="15" /> Imprimir</button>
+        <button class="btn" :disabled="!preview.url" @click="preview.imprimir(visorPdf)"><AppIcon name="printer" :size="15" /> Imprimir</button>
       </template>
     </Drawer>
 
