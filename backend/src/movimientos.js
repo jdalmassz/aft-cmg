@@ -6,7 +6,11 @@ const MOV_COLUMNS = `
   m.id, m.tipo, m.ubicacion_origen_id, m.ubicacion_destino_id,
   m.custodio_origen_id, m.custodio_destino_id, m.estado_origen, m.estado_destino,
   m.comentario, m.usuario_id, m.created_at,
-  uo.nombre AS ubicacion_origen, ud.nombre AS ubicacion_destino,
+  -- El nombre guardado manda, y la tabla es el respaldo: lo guardado sobrevive al
+  -- borrado de la ubicación; el JOIN cubre los movimientos viejos que aún no lo tenían
+  -- cuando se rellenó.
+  COALESCE(m.ubicacion_origen_nombre, uo.nombre) AS ubicacion_origen,
+  COALESCE(m.ubicacion_destino_nombre, ud.nombre) AS ubicacion_destino,
   ${AREA_ETIQUETA_DE('ao')} AS area_origen,
   ${AREA_ETIQUETA_DE('ad')} AS area_destino,
   co.nombre AS custodio_origen, cd.nombre AS custodio_destino,
@@ -26,10 +30,17 @@ async function registerMovimiento(pool, mov) {
   const { activo_id, tipo, ubicacion_origen_id = null, ubicacion_destino_id = null,
           custodio_origen_id = null, custodio_destino_id = null,
           estado_origen = null, estado_destino = null, comentario = null, usuario_id = null } = mov;
+  // El NOMBRE de las ubicaciones se copia aquí, en el mismo INSERT. Así el renglón del
+  // historial se sostiene solo el día que esa ubicación se borre: la referencia se
+  // queda en NULL y el nombre sigue diciendo de dónde salió.
   await pool.query(
     `INSERT INTO movimientos (activo_id, tipo, ubicacion_origen_id, ubicacion_destino_id,
+       ubicacion_origen_nombre, ubicacion_destino_nombre,
        custodio_origen_id, custodio_destino_id, estado_origen, estado_destino, comentario, usuario_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+     VALUES ($1, $2, $3, $4,
+       (SELECT nombre FROM ubicaciones WHERE id = $3),
+       (SELECT nombre FROM ubicaciones WHERE id = $4),
+       $5, $6, $7, $8, $9, $10)`,
     [activo_id, tipo, ubicacion_origen_id, ubicacion_destino_id,
      custodio_origen_id, custodio_destino_id, estado_origen, estado_destino, comentario, usuario_id]
   );
