@@ -136,7 +136,9 @@ async function callback(req, res) {
       data.role,
       ...((membresia && membresia.roles) || []),
     ];
-    const rolAccesos = candidatos.map((r) => sso.normalizaRol(r)).find(Boolean) || null;
+    // El MÁS CAPAZ de los que trae, no el primero: quien lleva SUPERVISOR y ECONOMICA
+    // puede lo de los dos, y con «el primero» el orden de la lista decidía por él.
+    const rolAccesos = sso.rolMasCapaz(candidatos);
     const sucursal = sso.sucursalDesdeMemberships(memberships);
     const rol = sso.rolInterno(rolAccesos);
 

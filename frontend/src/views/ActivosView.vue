@@ -119,7 +119,25 @@ function responsablesDe(areaId) {
   return [...ya.entries()].map(([id, nombre]) => ({ id, nombre })).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
 }
 
-const responsablesConteo = computed(() => responsablesDe(conteo.value.area))
+/**
+ * En la HOJA DE CONTEO, igual que en el filtro: sin área se listan todos.
+ *
+ * Aquí también estaba apagado hasta elegir un área, y aquí molesta todavía más: sacar
+ * el papel de UNA persona es el caso normal —es quien firma la hoja— y obligaba a saber
+ * de antemano en qué área está. Quien tiene cosas en dos áreas necesitaba dos hojas
+ * para lo que es un solo conteo. Jose, 30/09/2026: «poder seleccionar el responsable y
+ * que salga todo de ese sin necesidad del área».
+ */
+const responsablesConteo = computed(() => {
+  if (conteo.value.area) return responsablesDe(conteo.value.area)
+  const ya = new Map()
+  for (const r of catalogo.value.responsablesPorArea || []) {
+    if (!ya.has(r.custodio_id)) ya.set(r.custodio_id, r.nombre)
+  }
+  return [...ya.entries()]
+    .map(([id, nombre]) => ({ id, nombre }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+})
 
 /**
  * En el FILTRO, sin área se listan TODOS.
@@ -355,9 +373,16 @@ function cambiarAreaConteo() {
   if (conteo.value.responsable && !responsablesConteo.value.some((r) => r.id === Number(conteo.value.responsable))) conteo.value.responsable = ''
 }
 
-// Una hoja de conteo no se imprime «con todo mezclado»: hay que decir de qué área
-// y de quién es.
-const listoParaPdf = computed(() => !!conteo.value.area && !!conteo.value.responsable)
+/*
+ * Una hoja de conteo no se imprime «con todo mezclado»: hay que decir DE QUIÉN es o
+ * DE QUÉ ÁREA. Con una de las dos basta.
+ *
+ * Antes exigía las dos, y por eso no se podía sacar la hoja de una persona sin saber
+ * antes en qué área está — y quien tiene cosas en dos áreas necesitaba dos hojas para
+ * un solo conteo. El papel lo firma el responsable, así que «todo lo de Alieski» es
+ * una hoja perfectamente válida.
+ */
+const listoParaPdf = computed(() => !!conteo.value.area || !!conteo.value.responsable)
 
 // Los parámetros y el nombre del fichero salen de aquí, para que la vista previa
 // y la descarga sean exactamente el mismo documento.
@@ -778,15 +803,15 @@ onMounted(() => {
           <select v-model="conteo.area" class="select" @change="cambiarAreaConteo"><option value="">Elige el área</option><option v-for="a in catalogo.areas" :key="a.id" :value="a.id">{{ a.etiqueta }}</option></select>
         </div>
         <div class="field"><label>Responsable</label>
-          <select v-model="conteo.responsable" class="select" :disabled="!conteo.area">
-            <option value="">{{ conteo.area ? 'Elige el responsable' : 'Primero elige el área' }}</option>
+          <select v-model="conteo.responsable" class="select">
+            <option value="">{{ conteo.area ? 'Todos los de esta área' : 'Todos los responsables' }}</option>
             <option v-for="r in responsablesConteo" :key="r.id" :value="r.id">{{ r.nombre }}</option>
           </select>
-          <small v-if="!conteo.area" class="muted">Primero elige el área: sólo se enseñan sus responsables.</small>
-          <small v-else-if="responsablesConteo.length === 0" class="muted">Sin responsables en esta área.</small>
+          <small v-if="!conteo.area && conteo.responsable" class="muted">Sale TODO lo suyo, esté en el área que esté.</small>
+          <small v-else-if="conteo.area && responsablesConteo.length === 0" class="muted">Sin responsables en esta área.</small>
           <small v-else-if="conteo.responsable" class="muted">Sale sólo lo suyo: nada de otros responsables. Él firma la hoja.</small>
         </div>
-        <div class="field" v-if="!listoParaPdf"><small class="muted">Elige el área y el responsable: una hoja de conteo no se imprime con todo mezclado.</small></div>
+        <div class="field" v-if="!listoParaPdf"><small class="muted">Elige el área o el responsable: una hoja de conteo no se imprime con todo mezclado.</small></div>
       </div>
       <template #pie>
         <button class="btn sec" @click="cerrarConteo">Cancelar</button>
