@@ -21,6 +21,8 @@ const fResponsable = ref('')
 const fEstado = ref('')
 
 const filtrosAplicados = ref({})
+/** ¿Se está mirando una lista recortada? Si no, ninguna fila puede caerse de ella. */
+const hayFiltros = () => Object.values(filtrosAplicados.value).some((v) => v !== '' && v != null)
 const total = ref(0)
 const pagina = ref(1)
 const porPagina = ref(50)
@@ -260,6 +262,23 @@ async function guardar() {
       if (i >= 0) activos.value[i] = fila
       activoSel.value = fila
       ok('Activo actualizado')
+      /*
+       * Y SI HAY FILTRO PUESTO, se vuelve a preguntar al servidor.
+       *
+       * Pintar la fila en sitio evita una ida y vuelta, pero da por hecho que la fila
+       * sigue perteneciendo a lo que se está mirando, y editar es justo lo que puede
+       * sacarla de ahí. Con el filtro «Área 3» puesto, mover el activo al Área 6 lo
+       * dejaba en la lista —ya con el área nueva escrita al lado, que es lo raro— hasta
+       * que alguien refrescaba a mano. Lo reportó Jose el 30/09/2026: «lo cambio y se
+       * sigue quedando, tengo que refrescar».
+       *
+       * Se reconcilia con el servidor en vez de decidirlo aquí a propósito: repetir en
+       * la pantalla la regla de qué entra y qué no en cada filtro es tener dos jueces
+       * del mismo pleito, y el día que uno cambie el otro se queda mintiendo.
+       *
+       * Sin filtros no se pide nada: ahí la fila no se puede caer de ninguna lista.
+       */
+      if (hayFiltros()) await cargar()
     } else {
       await api.post('/api/activos', body)
       ok('Activo creado')
