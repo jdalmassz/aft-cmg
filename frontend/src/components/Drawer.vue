@@ -15,8 +15,24 @@ const props = defineProps({
   extra: { type: Object, default: () => ({}) },
   // La vista previa de la hoja no tiene botón ✕: se cierra con el backdrop, con
   // Escape o al cerrar el cajón de opciones (que la lleva consigo).
-  sinClose: { type: Boolean, default: false }
+  sinClose: { type: Boolean, default: false },
+  /**
+   * Cuántos pisos por encima va este cajón.
+   *
+   * Todos los cajones compartían `z-index`, así que cuando se abrían dos a la vez
+   * mandaba el ORDEN EN EL DOM, no quién se abrió último. El de confirmar se monta en
+   * `App.vue`, antes que los de cada vista, y por eso el «¿seguro que lo elimino?»
+   * salía DEBAJO del cajón de editar: había que cerrar uno para ver el otro, y el que
+   * quedaba encima no era el que te estaba preguntando.
+   *
+   * `nivel: 1` lo sube por encima de cualquier cajón normal. Va como número y no como
+   * clase para que se vea de un vistazo quién está encima de quién.
+   */
+  nivel: { type: Number, default: 0 }
 })
+
+const zBackdrop = () => 850 + props.nivel * 20
+const zPanel = () => 860 + props.nivel * 20
 const emit = defineEmits(['close'])
 
 const arrastre = ref(0)
@@ -56,14 +72,14 @@ function soltar() {
 <template>
   <Teleport to="body">
     <transition name="dw-fade">
-      <div v-if="open" class="dw-backdrop" @click="cerrar"></div>
+      <div v-if="open" class="dw-backdrop" :style="{ zIndex: zBackdrop() }" @click="cerrar"></div>
     </transition>
     <transition name="dw">
       <aside
         v-if="open"
         class="dw"
         :class="clase"
-        :style="[extra, { '--dw-ancho': ancho + 'px', transform: arrastre ? `translateY(${arrastre}px)` : null, transition: arrastre ? 'none' : null }]"
+        :style="[extra, { '--dw-ancho': ancho + 'px', zIndex: zPanel(), transform: arrastre ? `translateY(${arrastre}px)` : null, transition: arrastre ? 'none' : null }]"
         role="dialog"
         aria-modal="true"
       >
@@ -79,7 +95,10 @@ function soltar() {
                 </slot>
               </div>
             </div>
-          <button v-if="!sinClose" class="dw-close" title="Eliminar" aria-label="Eliminar" @click="cerrar">×</button>
+          <!-- Decía «Eliminar», en el título y en la etiqueta de accesibilidad. Este botón
+               CIERRA; el que elimina es otro y está en el pie. Quien navegue con lector de
+               pantalla oía «Eliminar» en cada cajón que abriera. -->
+          <button v-if="!sinClose" class="dw-close" title="Cerrar" aria-label="Cerrar" @click="cerrar">×</button>
           </div>
         </div>
         <div class="dw-body"><slot /></div>

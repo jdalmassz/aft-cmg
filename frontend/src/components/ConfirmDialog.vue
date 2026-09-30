@@ -10,7 +10,10 @@ function ejecutar() {
 </script>
 
 <template>
-  <Drawer :open="confirmBox.open" :titulo="confirmBox.titulo" :ancho="400" @close="cancelarConfirm">
+  <!-- `nivel=1`: el que pregunta va SIEMPRE encima del que abrió la pregunta. Este
+       cajón se monta en App.vue, antes que los de cada vista, así que con el mismo
+       z-index salía debajo del de editar. -->
+  <Drawer :open="confirmBox.open" :titulo="confirmBox.titulo" :ancho="400" :nivel="1" @close="cancelarConfirm">
     <p class="msg">{{ confirmBox.mensaje }}</p>
     <template #pie>
       <button class="btn sec" @click="cancelarConfirm">Cancelar</button>
