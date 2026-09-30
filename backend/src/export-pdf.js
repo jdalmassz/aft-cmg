@@ -30,6 +30,62 @@ function periodoActual() {
   return `${MESES[d.getMonth()]} / ${d.getFullYear()}`;
 }
 
+/**
+ * UN CONTEO POR MUESTREO: el N % de los activos, no todos.
+ *
+ * Lo pidió Jose el 30/09/2026: «100 % son todos, 10 % son el 10 por ciento de la
+ * cantidad de activos fijos». Contar el inventario entero cada vez no se hace; lo que
+ * se hace es contar una parte y rotarla.
+ *
+ * La muestra es ESTABLE, y ahí está lo importante: si se vuelve a imprimir la misma
+ * hoja tienen que salir los MISMOS activos. Una muestra que cambia en cada impresión
+ * no es un conteo — es imposible comprobar después qué se contó. Por eso no se usa
+ * `Math.random()`: se ordena por una huella de (periodo + id) y se cogen los primeros.
+ *
+ * Y como la semilla lleva el PERIODO, el 10 % de octubre no son los mismos que el de
+ * septiembre: la muestra rota sola de un mes al siguiente, que es justo lo que se
+ * quiere de un conteo por muestreo.
+ *
+ * El orden de la hoja no se toca: se eligen los que entran y se devuelven en el mismo
+ * orden en que venían, por área y ubicación.
+ */
+function huella(txt) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < txt.length; i++) {
+    h ^= txt.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  /*
+   * Y LA MEZCLA FINAL, que no es adorno.
+   *
+   * Con FNV-1a a secas, ids seguidos («…:41», «…:42») daban huellas pegadas y la
+   * muestra salía en rachas: al probarla con 57 activos, el 10 % devolvió
+   * 5, 6, 7, 11, 12, 13. Seis activos consecutivos están casi seguro en el mismo
+   * cubículo y con el mismo responsable — o sea, lo contrario de una muestra.
+   *
+   * Estas tres vueltas (el finalizador de MurmurHash3) reparten los bits, y entonces
+   * ids vecinos caen en sitios muy distintos.
+   */
+  h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b) >>> 0;
+  h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35) >>> 0;
+  h ^= h >>> 16;
+  return h >>> 0;
+}
+
+function muestra(filas, pct, semilla) {
+  if (!(pct > 0 && pct < 100) || filas.length === 0) return filas;
+  // Al menos uno: un 5 % de diez activos es 0,5, y una hoja de conteo vacía no sirve.
+  const cuantos = Math.max(1, Math.ceil((filas.length * pct) / 100));
+  const elegidos = new Set(
+    filas
+      .map((f, i) => ({ i, h: huella(`${semilla}:${f.id}`) }))
+      .sort((a, b) => a.h - b.h || a.i - b.i)
+      .slice(0, cuantos)
+      .map((o) => o.i)
+  );
+  return filas.filter((_, i) => elegidos.has(i));
+}
+
 function metaFrom(req, extra = {}) {
   const q = req.query || {};
   // Útiles y herramientas: la misma hoja de conteo, pero sin área ni ubicación —un útil
@@ -48,6 +104,10 @@ function metaFrom(req, extra = {}) {
     // El que se eligió a mano para firmar como «Responsable del Área».
     responsableAreaSel: extra.responsableAreaSel || '',
     conteo: q.conteo || '',
+    // El porcentaje pedido y cuántos salieron de cuántos. Van a la cabecera: una hoja
+    // con una PARTE del inventario tiene que decirlo, o se lee como si fuera todo.
+    pct: extra.pct || 100,
+    muestra: extra.muestra || '',
     periodo: q.periodo || periodoActual(),
     // El responsable enganchado a su usuario manda sobre el nombre de la cuenta: en
     // la hoja hacen falta nombre y apellidos, no el usuario con el que entra.
@@ -69,7 +129,10 @@ function drawHeader(doc, meta) {
   const y0 = M.top;
   let y = y0;
 
-  for (const [k, v] of [['Entidad:', meta.entidad], ['Sucursal:', meta.sucursal], ['Conteo:', meta.conteo]]) {
+  const lineas = [['Entidad:', meta.entidad], ['Sucursal:', meta.sucursal], ['Conteo:', meta.conteo]];
+  // Sólo si es una muestra. Con el 100 % la línea sobra y quita sitio.
+  if (meta.muestra) lineas.push(['Muestra:', meta.muestra]);
+  for (const [k, v] of lineas) {
     kvLine(doc, M.left, y, k, v);
     y += 14;
   }
@@ -396,8 +459,18 @@ async function exportActivosPdf(req, res, next) {
         : null
     ]).then((rs) => rs.map((r) => r?.rows[0] || null));
 
+    // El N % de lo que salió del filtro, estable y sin tocar el orden de la hoja.
+    const pedido = Number(req.query.pct);
+    const pct = Number.isFinite(pedido) ? Math.min(100, Math.max(1, Math.round(pedido))) : 100;
+    const todas = rows.rows;
+    const periodo = req.query.periodo || periodoActual();
+    const elegidas = muestra(todas, pct, periodo);
+    rows.rows = elegidas;
+
     const meta = metaFrom(req, {
-      sucursal: rows.rows[0]?.sucursal,
+      sucursal: todas[0]?.sucursal,
+      pct,
+      muestra: pct < 100 ? `${pct} % — ${elegidas.length} de ${todas.length} activos` : '',
       area: ar ? ar.etiqueta : '',
       ubicacion: ub ? ub.nombre : '',
       responsable: cu ? cu.nombre : '',
