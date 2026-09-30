@@ -111,11 +111,32 @@ async function callback(req, res) {
     // porque "lo que se comprueba es lo que se usa".
     const destino = sso.destinoSeguro(returnTo, req) ? returnTo : `${sso.origenPublico(req)}/inicio`;
 
-    // Accesos devuelve las membresías de la más reciente a la más antigua y
-    // nos quedamos con la primera: sucursal y rol salen de esa misma.
+    /*
+     * EL ROL SALE DE LA PERSONA, NO DE LA MEMBRESÍA.
+     *
+     * Aquí se leía `memberships[0].roles[0]`, y ahí NO está el rol de Procovar: esa
+     * columna es de better-auth y guarda su vocabulario —«owner», «member»—. Buscando
+     * «SUPER ADMIN» no se encuentra nunca, así que `normalizaRol` devolvía null y todo
+     * el que entraba se quedaba en `usuario`, que es el de menos permisos.
+     *
+     * Y el caso que lo destapó es el peor: un **SUPER ADMIN no pertenece a ninguna
+     * sucursal** —por eso las ve todas—, así que no tiene ni una membresía de la que
+     * sacar nada. Diez cuentas entraban sin rol y sin sucursal, veían cero activos, y la
+     * pantalla les decía «entraste sin sucursal asignada» como si el problema fuera de
+     * ellas. Jose, 30/09/2026, con su propia cuenta delante.
+     *
+     * `data.role` y `data.roles` los manda Accesos desde hoy, con los mismos nombres que
+     * ya usaba `verify-session`. El orden importa: primero el rol global de la persona y
+     * después los de sus membresías, y se coge **el primero que el catálogo reconozca**.
+     * `data.role` a secas se queda de respaldo por si contesta un Accesos antiguo.
+     */
     const membresia = Array.isArray(memberships) && memberships.length ? memberships[0] : null;
-    const roles = (membresia && membresia.roles) || [];
-    const rolAccesos = sso.normalizaRol(roles[0]);
+    const candidatos = [
+      ...(Array.isArray(data.roles) ? data.roles : []),
+      data.role,
+      ...((membresia && membresia.roles) || []),
+    ];
+    const rolAccesos = candidatos.map((r) => sso.normalizaRol(r)).find(Boolean) || null;
     const sucursal = sso.sucursalDesdeMemberships(memberships);
     const rol = sso.rolInterno(rolAccesos);
 
@@ -129,9 +150,10 @@ async function callback(req, res) {
       `SSO entrada: ${user.email || user.id} · rol_accesos=${rolAccesos || 'desconocido'} · ` +
       `rol=${rol} · sucursal=${sucursal || 'ninguna'}`
     );
-    // TEMPORAL: la forma real de memberships/roles que devuelve Accesos en
-    // producción. Borrar esta línea en cuanto se lea el registro.
-    console.log(`SSO crudo: ${JSON.stringify({ memberships, roles })}`);
+    // TEMPORAL: la forma real de lo que devuelve Accesos en producción. Sirvió: fue
+    // mirando esto como se vio que el rol no venía por donde se leía. Borrar cuando
+    // lleve unos días estable.
+    console.log(`SSO crudo: ${JSON.stringify({ role: data.role, roles: data.roles, memberships })}`);
 
     const token = sign(localUser);
     res.cookie(sso.SSO_COOKIE, token, cookieOpts(req));
