@@ -120,7 +120,31 @@ function responsablesDe(areaId) {
 }
 
 const responsablesConteo = computed(() => responsablesDe(conteo.value.area))
-const responsablesFiltro = computed(() => responsablesDe(fArea.value))
+
+/**
+ * En el FILTRO, sin área se listan TODOS.
+ *
+ * Aquí el desplegable de responsable estaba apagado hasta elegir un área, y decía
+ * «Primero elige el área». En el formulario eso tiene sentido —el servidor deduce la
+ * ubicación a partir del área Y el responsable—, pero al FILTRAR no: «qué tiene
+ * Alieski» es una pregunta entera por sí sola, y encima es uno de los cortes que ya
+ * hace el exporte. Obligaba a saber de antemano en qué área está una persona, que es
+ * justo lo que se viene a averiguar — y quien tiene cosas en dos áreas no se podía
+ * mirar de una vez. Jose, 30/09/2026.
+ *
+ * Salen los que TIENEN activos y no el padrón entero: un responsable sin nada sólo
+ * sirve para elegirlo y que la lista salga vacía.
+ */
+const responsablesFiltro = computed(() => {
+  if (fArea.value) return responsablesDe(fArea.value)
+  const ya = new Map()
+  for (const r of catalogo.value.responsablesPorArea || []) {
+    if (!ya.has(r.custodio_id)) ya.set(r.custodio_id, r.nombre)
+  }
+  return [...ya.entries()]
+    .map(([id, nombre]) => ({ id, nombre }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+})
 
 // En el formulario se deja a la vista el responsable que ya trae el activo, por
 // si no está en la lista del área: cambiar de área sí lo quita.
@@ -551,7 +575,7 @@ onMounted(() => {
       <input v-model="q" class="input" placeholder="Buscar por descripción, modelo, código…" @keyup.enter="aplicar" />
       <select v-model="fCategoria" class="select" @change="aplicar"><option value="">Categoría</option><option v-for="c in catalogo.categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
       <select v-model="fArea" class="select" @change="cambiarArea"><option value="">Área</option><option v-for="a in catalogo.areas" :key="a.id" :value="a.id">{{ a.etiqueta }}</option></select>
-      <select v-model="fResponsable" class="select" :disabled="!fArea" @change="aplicar"><option value="">{{ fArea ? 'Responsable' : 'Primero elige el área' }}</option><option v-for="r in responsablesFiltro" :key="r.id" :value="r.id">{{ r.nombre }}</option></select>
+      <select v-model="fResponsable" class="select" @change="aplicar"><option value="">Responsable</option><option v-for="r in responsablesFiltro" :key="r.id" :value="r.id">{{ r.nombre }}</option></select>
       <select v-model="fEstado" class="select" @change="aplicar"><option value="">Estado</option><option v-for="e in ESTADOS" :key="e" :value="e">{{ e }}</option></select>
       <span class="btns">
         <button class="btn sm" @click="aplicar">Filtrar</button>

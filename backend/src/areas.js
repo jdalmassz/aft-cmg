@@ -62,15 +62,84 @@ async function updateArea(req, res, next) {
   }
 }
 
+/**
+ * Borrar un área se lleva por delante sus ubicaciones VACÍAS.
+ *
+ * Antes bastaba con que el área tuviera una ubicación para negarse, aunque no tuviera
+ * ni un activo dentro, y el mensaje decía «muévelas a otra área primero». Eso era un
+ * callejón sin salida: desde la pantalla de Áreas no se borra una ubicación suelta, así
+ * que un área con un cubículo vacío no había forma de quitarla. Le pasó a Jose el
+ * 30/09/2026 con el área 3 después de sacarle el último activo: cero activos, un
+ * cubículo vacío, y el botón de eliminar diciendo que no.
+ *
+ * Lo que de verdad hay que proteger son los DATOS, no las estanterías donde no hay
+ * nada. Así que se mira activo por activo:
+ *
+ *   una ubicación con activos      → no se borra nada, y se dice cuál y cuántos
+ *   una ubicación en el historial  → tampoco, y se dice por qué (la referencia es suya)
+ *   ubicaciones vacías             → se van con el área
+ *
+ * El borrado va en UNA sola sentencia con CTE y no en dos seguidas: si la segunda
+ * fallara, el área se quedaría sin sus ubicaciones y con los activos apuntando al
+ * vacío. (Aquí no se usa BEGIN/COMMIT porque el pool puede dar clientes distintos.)
+ */
 async function deleteArea(req, res, next) {
   try {
-    const u = await db.getPool().query('SELECT COUNT(*)::int AS n FROM ubicaciones WHERE area_id = $1', [req.params.id]);
-    if (u.rows[0].n > 0) {
-      return res.status(400).json({ error: `No se puede eliminar: tiene ${u.rows[0].n} ubicación(es). Muévelas a otra área primero` });
+    const pool = db.getPool();
+    const u = await pool.query(
+      `SELECT u.id, u.nombre,
+              (SELECT COUNT(*)::int FROM activos a WHERE a.ubicacion_id = u.id) AS activos,
+              (SELECT COUNT(*)::int FROM movimientos m
+                WHERE m.ubicacion_origen_id = u.id OR m.ubicacion_destino_id = u.id) AS historial
+         FROM ubicaciones u WHERE u.area_id = $1 ORDER BY u.nombre`,
+      [req.params.id]
+    );
+
+    const conActivos = u.rows.filter((x) => x.activos > 0);
+    if (conActivos.length) {
+      const detalle = conActivos.map((x) => `«${x.nombre}» (${x.activos})`).join(', ');
+      return res.status(400).json({
+        error: `No se puede eliminar: todavía hay activos en ${detalle}. Muévelos a otra área primero`
+      });
     }
-    const r = await db.getPool().query('DELETE FROM areas WHERE id = $1 RETURNING id', [req.params.id]);
+
+    /*
+     * Una ubicación vacía puede seguir NOMBRADA EN EL HISTORIAL: el traslado que sacó
+     * de ahí el último activo apunta a ella. Borrarla reventaría la clave ajena, y si
+     * se forzara, el movimiento pasaría a decir que el activo vino de ninguna parte.
+     * El pasado no se reescribe.
+     *
+     * Así que se la deja EN PIE y se le quita el área (`area_id = NULL`): el historial
+     * sigue entero y el área se va. La ubicación queda «sin área», que es exactamente
+     * lo que es, y la pantalla ya sabe pintarlo así.
+     *
+     * Las que no aparecen en ningún movimiento no le hacen falta a nadie: ésas sí se
+     * borran. Todo en UNA sentencia: si el área se fuera y las ubicaciones no, los
+     * activos quedarían apuntando al vacío.
+     */
+    const r = await pool.query(
+      `WITH en_historial AS (
+         SELECT u.id FROM ubicaciones u
+          WHERE u.area_id = $1
+            AND EXISTS (SELECT 1 FROM movimientos m
+                         WHERE m.ubicacion_origen_id = u.id OR m.ubicacion_destino_id = u.id)
+       ), sueltas AS (
+         UPDATE ubicaciones SET area_id = NULL
+          WHERE area_id = $1 AND id IN (SELECT id FROM en_historial) RETURNING id
+       ), borradas AS (
+         DELETE FROM ubicaciones
+          WHERE area_id = $1 AND id NOT IN (SELECT id FROM en_historial) RETURNING id
+       )
+       DELETE FROM areas WHERE id = $1 RETURNING id`,
+      [req.params.id]
+    );
     if (r.rowCount === 0) return res.status(404).json({ error: 'Área no encontrada' });
-    return res.json({ ok: true });
+    const enHistorial = u.rows.filter((x) => x.historial > 0).length;
+    return res.json({
+      ok: true,
+      ubicaciones_borradas: u.rows.length - enHistorial,
+      ubicaciones_sin_area: enHistorial
+    });
   } catch (e) { next(e); }
 }
 
