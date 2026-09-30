@@ -40,22 +40,78 @@ export function construirDocumento({ titulo, subtitulo, columnas, filas, pie }) 
 </body></html>`
 }
 
-export function imprimirDocumento(html) {
+/** El marco oculto donde se imprime. Nunca la pantalla de la aplicación. */
+function marcoOculto() {
   const marco = document.createElement('iframe')
   marco.setAttribute('aria-hidden', 'true')
   // No display:none: algunos navegadores se saltan la impresión de un iframe oculto.
   marco.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;opacity:0;border:0'
+  return marco
+}
+
+/**
+ * Lanza el diálogo del navegador sobre ese marco, y lo quita cuando toca.
+ *
+ * El marco NO se quita a los 15 segundos como antes: si el diálogo sigue abierto —y
+ * con una hoja de conteo larga se queda abierto un rato— quitarlo cancela la
+ * impresión por debajo. Se espera a `afterprint`, y el plazo de respaldo es largo.
+ */
+function lanzar(marco) {
   const limpiar = () => { try { marco.remove() } catch (_) { /* ya se fue */ } }
+  try {
+    const w = marco.contentWindow
+    w.focus()
+    w.addEventListener('afterprint', limpiar, { once: true })
+    w.print()
+  } catch (_) {
+    limpiar()
+    return false
+  }
+  setTimeout(limpiar, 120000)
+  return true
+}
+
+export function imprimirDocumento(html) {
+  const marco = marcoOculto()
   marco.addEventListener('load', () => {
-    try {
-      const w = marco.contentWindow
-      w.focus()
-      w.print()
-    } catch (_) { /* el navegador decide */ }
-    // El diálogo puede tardar: se quita pasados unos segundos o al terminar.
-    window.addEventListener('afterprint', limpiar, { once: true })
-    setTimeout(limpiar, 15000)
+    // UN iframe recién insertado dispara un `load` de `about:blank` ANTES de que
+    // cargue el `srcdoc`. Ese primer aviso llegaba con el documento vacío, se
+    // imprimía la nada, y había que volver a darle. Se ignora hasta que el
+    // documento tiene de verdad lo que se quiere imprimir.
+    const doc = marco.contentDocument
+    if (!doc || !doc.body || !doc.body.firstChild) return
+    lanzar(marco)
   })
   document.body.appendChild(marco)
   marco.srcdoc = html
+}
+
+/**
+ * Imprimir un PDF que ya está en un blob.
+ *
+ * Antes esto hacía `window.open(url, '_blank')`, que NO imprime: abre otra pestaña y
+ * deja al que la pidió teniendo que buscar el botón de imprimir dentro del visor. Y si
+ * el navegador bloquea la ventana emergente —que es lo normal cuando salta sola— no
+ * pasa nada visible y hay que volver a darle. De ahí lo de «tengo que dar imprimir tres
+ * veces» (Arais, contado por Jose el 30/09/2026).
+ *
+ * Ahora el PDF se carga en el marco oculto y se imprime desde ahí: un clic, un diálogo.
+ * Si el navegador no deja imprimir un PDF incrustado, entonces sí se abre la pestaña —
+ * pero como respaldo, no como camino normal.
+ */
+export function imprimirPdf(url) {
+  const marco = marcoOculto()
+  let hecho = false
+  marco.addEventListener('load', () => {
+    if (hecho) return
+    hecho = true
+    if (!lanzar(marco)) window.open(url, '_blank')
+  })
+  marco.addEventListener('error', () => {
+    if (hecho) return
+    hecho = true
+    window.open(url, '_blank')
+  })
+  document.body.appendChild(marco)
+  marco.src = url
 }

@@ -1,6 +1,7 @@
 import { reactive, watch } from 'vue'
 import { getToken } from './api'
 import { err } from './toast'
+import { imprimirPdf } from './imprimir'
 
 // Vista previa de un PDF que genera el servidor: se pide con las mismas
 // credenciales que la descarga y se guarda como blob, para meterlo en el iframe
@@ -51,10 +52,10 @@ export function usePreviewPdf() {
       a.remove()
     },
 
-    // Imprimir lo abre en el visor del navegador, que es el que sabe imprimir un
-    // PDF. window.print() de aquí imprimiría la pantalla, no la hoja.
+    // Un clic, un diálogo de impresión. El PDF se carga en un marco oculto y se
+    // imprime desde ahí; `window.print()` de aquí imprimiría la pantalla, no la hoja.
     imprimir() {
-      if (preview.url) window.open(preview.url, '_blank')
+      if (preview.url) imprimirPdf(preview.url)
     },
 
     cerrar() {
