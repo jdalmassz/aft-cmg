@@ -72,25 +72,23 @@ async function updateArea(req, res, next) {
  * 30/09/2026 con el área 3 después de sacarle el último activo: cero activos, un
  * cubículo vacío, y el botón de eliminar diciendo que no.
  *
- * Lo que de verdad hay que proteger son los DATOS, no las estanterías donde no hay
- * nada. Así que se mira activo por activo:
+ * Lo que de verdad hay que proteger son los DATOS, no las estanterías donde no hay nada:
  *
- *   una ubicación con activos      → no se borra nada, y se dice cuál y cuántos
- *   una ubicación en el historial  → tampoco, y se dice por qué (la referencia es suya)
- *   ubicaciones vacías             → se van con el área
+ *   una ubicación con activos → no se borra nada, y se dice cuál y cuántos
+ *   ubicaciones vacías        → se van con el área, aunque estén en el historial
  *
- * El borrado va en UNA sola sentencia con CTE y no en dos seguidas: si la segunda
- * fallara, el área se quedaría sin sus ubicaciones y con los activos apuntando al
- * vacío. (Aquí no se usa BEGIN/COMMIT porque el pool puede dar clientes distintos.)
+ * Lo segundo sólo es seguro desde que el movimiento guarda el NOMBRE de la ubicación
+ * (ver `schema.sql`). Antes la clave ajena lo impedía, y forzarlo habría dejado el
+ * movimiento diciendo que el activo vino de ninguna parte. Ahora la referencia se queda
+ * en NULL y el renglón sigue contando de dónde salió: «se puede borrar y que se sepa de
+ * dónde se movió, y ya» (Jose, 30/09/2026).
  */
 async function deleteArea(req, res, next) {
   try {
     const pool = db.getPool();
     const u = await pool.query(
       `SELECT u.id, u.nombre,
-              (SELECT COUNT(*)::int FROM activos a WHERE a.ubicacion_id = u.id) AS activos,
-              (SELECT COUNT(*)::int FROM movimientos m
-                WHERE m.ubicacion_origen_id = u.id OR m.ubicacion_destino_id = u.id) AS historial
+              (SELECT COUNT(*)::int FROM activos a WHERE a.ubicacion_id = u.id) AS activos
          FROM ubicaciones u WHERE u.area_id = $1 ORDER BY u.nombre`,
       [req.params.id]
     );
@@ -103,43 +101,15 @@ async function deleteArea(req, res, next) {
       });
     }
 
-    /*
-     * Una ubicación vacía puede seguir NOMBRADA EN EL HISTORIAL: el traslado que sacó
-     * de ahí el último activo apunta a ella. Borrarla reventaría la clave ajena, y si
-     * se forzara, el movimiento pasaría a decir que el activo vino de ninguna parte.
-     * El pasado no se reescribe.
-     *
-     * Así que se la deja EN PIE y se le quita el área (`area_id = NULL`): el historial
-     * sigue entero y el área se va. La ubicación queda «sin área», que es exactamente
-     * lo que es, y la pantalla ya sabe pintarlo así.
-     *
-     * Las que no aparecen en ningún movimiento no le hacen falta a nadie: ésas sí se
-     * borran. Todo en UNA sentencia: si el área se fuera y las ubicaciones no, los
-     * activos quedarían apuntando al vacío.
-     */
+    // En UNA sentencia: si el área se fuera y las ubicaciones no, los activos quedarían
+    // apuntando al vacío.
     const r = await pool.query(
-      `WITH en_historial AS (
-         SELECT u.id FROM ubicaciones u
-          WHERE u.area_id = $1
-            AND EXISTS (SELECT 1 FROM movimientos m
-                         WHERE m.ubicacion_origen_id = u.id OR m.ubicacion_destino_id = u.id)
-       ), sueltas AS (
-         UPDATE ubicaciones SET area_id = NULL
-          WHERE area_id = $1 AND id IN (SELECT id FROM en_historial) RETURNING id
-       ), borradas AS (
-         DELETE FROM ubicaciones
-          WHERE area_id = $1 AND id NOT IN (SELECT id FROM en_historial) RETURNING id
-       )
+      `WITH vacias AS (DELETE FROM ubicaciones WHERE area_id = $1 RETURNING id)
        DELETE FROM areas WHERE id = $1 RETURNING id`,
       [req.params.id]
     );
     if (r.rowCount === 0) return res.status(404).json({ error: 'Área no encontrada' });
-    const enHistorial = u.rows.filter((x) => x.historial > 0).length;
-    return res.json({
-      ok: true,
-      ubicaciones_borradas: u.rows.length - enHistorial,
-      ubicaciones_sin_area: enHistorial
-    });
+    return res.json({ ok: true, ubicaciones_borradas: u.rows.length });
   } catch (e) { next(e); }
 }
 
@@ -181,13 +151,11 @@ async function deleteUbicacion(req, res, next) {
     if (u.rows[0].n > 0) {
       return res.status(400).json({ error: `No se puede eliminar: tiene ${u.rows[0].n} activo(s)` });
     }
-    const m = await pool.query(
-      'SELECT COUNT(*)::int AS n FROM movimientos WHERE ubicacion_origen_id = $1 OR ubicacion_destino_id = $1',
-      [req.params.id]
-    );
-    if (m.rows[0].n > 0) {
-      return res.status(400).json({ error: 'No se puede eliminar: aparece en el historial de movimientos' });
-    }
+    // Aparecer en el historial YA NO lo impide. El movimiento guarda el nombre de la
+    // ubicación (ver `schema.sql`), así que al borrarla la referencia se queda en NULL
+    // y el renglón sigue diciendo de dónde salió el activo. Antes esto era un callejón
+    // sin salida: una ubicación vacía nombrada en un traslado no se podía quitar nunca,
+    // y con ella se quedaba clavada su área.
     const r = await pool.query('DELETE FROM ubicaciones WHERE id = $1 RETURNING id', [req.params.id]);
     if (r.rowCount === 0) return res.status(404).json({ error: 'Ubicación no encontrada' });
     return res.json({ ok: true });

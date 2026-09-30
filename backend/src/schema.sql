@@ -121,6 +121,35 @@ CREATE TABLE IF NOT EXISTS movimientos (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- EL HISTORIAL GUARDA EL NOMBRE, no sólo la referencia.
+--
+-- Una ubicación nombrada en un movimiento no se podía borrar: la clave ajena lo
+-- impedía, así que un cubículo vacío se quedaba para siempre y con él su área. Y
+-- forzar el borrado era peor — el movimiento pasaría a decir que el activo vino de
+-- ninguna parte.
+--
+-- Jose lo zanjó el 30/09/2026: «se puede borrar y que se sepa de dónde se movió, y ya».
+-- Con el nombre copiado aquí, el historial se sostiene solo: la ubicación se borra, la
+-- referencia se pone a NULL y el renglón sigue diciendo de dónde salió.
+ALTER TABLE movimientos ADD COLUMN IF NOT EXISTS ubicacion_origen_nombre TEXT;
+ALTER TABLE movimientos ADD COLUMN IF NOT EXISTS ubicacion_destino_nombre TEXT;
+
+-- Relleno para lo ya escrito. Idempotente: sólo toca lo que está en blanco, así que
+-- volver a arrancar no reescribe un nombre que ya se guardó.
+UPDATE movimientos m SET ubicacion_origen_nombre = u.nombre
+  FROM ubicaciones u WHERE u.id = m.ubicacion_origen_id AND m.ubicacion_origen_nombre IS NULL;
+UPDATE movimientos m SET ubicacion_destino_nombre = u.nombre
+  FROM ubicaciones u WHERE u.id = m.ubicacion_destino_id AND m.ubicacion_destino_nombre IS NULL;
+
+-- Y que borrar una ubicación deje de reventar: la referencia se vacía y el nombre de
+-- arriba es el que sigue contando la historia.
+ALTER TABLE movimientos DROP CONSTRAINT IF EXISTS movimientos_ubicacion_origen_id_fkey;
+ALTER TABLE movimientos ADD CONSTRAINT movimientos_ubicacion_origen_id_fkey
+  FOREIGN KEY (ubicacion_origen_id) REFERENCES ubicaciones(id) ON DELETE SET NULL;
+ALTER TABLE movimientos DROP CONSTRAINT IF EXISTS movimientos_ubicacion_destino_id_fkey;
+ALTER TABLE movimientos ADD CONSTRAINT movimientos_ubicacion_destino_id_fkey
+  FOREIGN KEY (ubicacion_destino_id) REFERENCES ubicaciones(id) ON DELETE SET NULL;
+
 CREATE INDEX IF NOT EXISTS idx_movimientos_activo ON movimientos(activo_id);
 CREATE INDEX IF NOT EXISTS idx_movimientos_fecha ON movimientos(created_at DESC);
 
