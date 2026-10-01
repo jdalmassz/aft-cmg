@@ -568,7 +568,7 @@ async function catalogo(req, res, next) {
     const [categorias, sucursales, areas, ubicaciones, custodios, marcas, respArea] = await Promise.all([
       db.getPool().query('SELECT id, nombre, ejemplos FROM categorias ORDER BY nombre'),
       db.getPool().query('SELECT id, nombre FROM sucursales ORDER BY nombre'),
-      db.getPool().query(`SELECT ar.id, ar.numero, ar.nombre, ${AREA_ETIQUETA} AS etiqueta FROM areas ar ORDER BY ar.numero`),
+      db.getPool().query(`SELECT ar.id, ar.numero, ar.nombre, ${AREA_ETIQUETA} AS etiqueta, ar.responsable_id, c.nombre AS responsable FROM areas ar LEFT JOIN custodios c ON c.id = ar.responsable_id ORDER BY ar.numero`),
       db.getPool().query(`SELECT id, nombre, area_id FROM ubicaciones ORDER BY ${ordenUbicaciones()}`),
       db.getPool().query('SELECT id, nombre FROM custodios ORDER BY nombre'),
       db.getPool().query('SELECT id, nombre FROM marcas ORDER BY nombre'),

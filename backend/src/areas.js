@@ -1,4 +1,5 @@
 const db = require('./db');
+const ExcelJS = require('exceljs');
 
 const { AREA_ETIQUETA, ordenUbicaciones } = require('./activos-query');
 const { registerMovimiento } = require('./movimientos');
@@ -21,7 +22,11 @@ async function listAreas(req, res, next) {
   try {
     const pool = db.getPool();
     const [areas, ubicaciones] = await Promise.all([
-      pool.query(`SELECT ar.id, ar.numero, ar.nombre, ${AREA_ETIQUETA} AS etiqueta FROM areas ar ORDER BY ar.numero`),
+      pool.query(`
+        SELECT ar.id, ar.numero, ar.nombre, ${AREA_ETIQUETA} AS etiqueta,
+               ar.responsable_id, c.nombre AS responsable
+        FROM areas ar LEFT JOIN custodios c ON c.id = ar.responsable_id
+        ORDER BY ar.numero`),
       pool.query(`
         SELECT u.id, u.nombre, u.area_id, COUNT(a.id)::int AS activos
         FROM ubicaciones u LEFT JOIN activos a ON a.ubicacion_id = u.id
@@ -31,20 +36,41 @@ async function listAreas(req, res, next) {
   } catch (e) { next(e); }
 }
 
+// El nombre es obligatorio; el número NUNCA se escribe: al crear lo coge solo
+// (el siguiente libre) y al editar no se toca.
 function datosArea(body) {
-  const numero = Number(body?.numero);
-  if (!Number.isInteger(numero) || numero < 1) return { error: 'El número del área tiene que ser un entero mayor que 0' };
-  return { numero, nombre: limpio(body?.nombre) || null };
+  const nombre = limpio(body?.nombre);
+  if (!nombre) return { error: 'Pon el nombre del área' };
+  const bruto = body?.responsable_id;
+  const responsableId = bruto == null || bruto === '' ? null : Number(bruto);
+  if (responsableId !== null && (!Number.isInteger(responsableId) || responsableId < 1)) {
+    return { error: 'El responsable del área no es válido' };
+  }
+  return { nombre, responsableId };
 }
 
 async function createArea(req, res, next) {
   try {
     const d = datosArea(req.body);
     if (d.error) return res.status(400).json({ error: d.error });
-    const r = await db.getPool().query('INSERT INTO areas (numero, nombre) VALUES ($1, $2) RETURNING id, numero, nombre', [d.numero, d.nombre]);
-    return res.status(201).json(r.rows[0]);
+    // El siguiente número en la propia sentencia: dos altas a la vez no pueden
+    // pisarse (si acaso lo hacen, el UNIQUE decide y se reintenta abajo).
+    for (let intento = 0; intento < 3; intento++) {
+      try {
+        const r = await db.getPool().query(
+          `INSERT INTO areas (numero, nombre, responsable_id)
+           SELECT COALESCE(MAX(numero), 0) + 1, $1, $2 FROM areas
+           RETURNING id, numero, nombre, responsable_id`,
+          [d.nombre, d.responsableId]
+        );
+        return res.status(201).json(r.rows[0]);
+      } catch (e) {
+        if (e.code !== '23505' || intento === 2) throw e;
+      }
+    }
   } catch (e) {
-    if (e.code === '23505') return res.status(400).json({ error: 'Ya existe un área con ese número' });
+    if (e.code === '23505') return res.status(400).json({ error: 'No se pudo asignar el número del área, intentalo otra vez' });
+    if (e.code === '23503') return res.status(400).json({ error: 'Ese responsable no existe' });
     next(e);
   }
 }
@@ -53,11 +79,14 @@ async function updateArea(req, res, next) {
   try {
     const d = datosArea(req.body);
     if (d.error) return res.status(400).json({ error: d.error });
-    const r = await db.getPool().query('UPDATE areas SET numero = $1, nombre = $2 WHERE id = $3 RETURNING id, numero, nombre', [d.numero, d.nombre, req.params.id]);
+    const r = await db.getPool().query(
+      'UPDATE areas SET nombre = $1, responsable_id = $2 WHERE id = $3 RETURNING id, numero, nombre, responsable_id',
+      [d.nombre, d.responsableId, req.params.id]
+    );
     if (r.rowCount === 0) return res.status(404).json({ error: 'Área no encontrada' });
     return res.json(r.rows[0]);
   } catch (e) {
-    if (e.code === '23505') return res.status(400).json({ error: 'Ya existe un área con ese número' });
+    if (e.code === '23503') return res.status(400).json({ error: 'Ese responsable no existe' });
     next(e);
   }
 }
@@ -300,4 +329,91 @@ async function renumerarFamilia(pool, fam, usuarioId) {
   return { familia: fam, responsables: n, creadas, renombradas, movidos };
 }
 
-module.exports = { listAreas, createArea, updateArea, deleteArea, createUbicacion, updateUbicacion, deleteUbicacion, renumerarUbicaciones };
+/**
+ * Excel de áreas y responsables: una fila por área, con el jefe (el asignado
+ * en la pantalla Áreas) y la lista de sus responsables con su número de activos.
+ * Es el documento de esta pantalla; el export de inventario no se toca.
+ */
+const FONT = { name: 'Aptos Narrow', size: 11, family: 2, scheme: 'minor' };
+
+async function exportAreasXlsx(req, res, next) {
+  try {
+    const pool = db.getPool();
+    const [areas, resp] = await Promise.all([
+      pool.query(`
+        SELECT ar.id, ar.numero, ${AREA_ETIQUETA} AS etiqueta, c.nombre AS responsable
+        FROM areas ar LEFT JOIN custodios c ON c.id = ar.responsable_id
+        ORDER BY ar.numero`),
+      pool.query(`
+        SELECT u.area_id, cu.nombre, COUNT(a.id)::int AS activos
+        FROM activos a
+        JOIN ubicaciones u ON u.id = a.ubicacion_id
+        JOIN custodios cu ON cu.id = a.custodio_id
+        WHERE a.tipo = 'AFT' AND a.estado = 'ACTIVO'
+        GROUP BY u.area_id, cu.nombre`)
+    ]);
+
+    const porArea = new Map();
+    for (const r of resp.rows) {
+      if (r.area_id == null) continue;
+      if (!porArea.has(r.area_id)) porArea.set(r.area_id, []);
+      porArea.get(r.area_id).push(r);
+    }
+
+    const filas = areas.rows.map((ar) => {
+      // El que más activos tiene el primero, como en la renumeración.
+      const rs = (porArea.get(ar.id) || [])
+        .sort((a, b) => b.activos - a.activos || cmpNombre(a.nombre, b.nombre));
+      return [
+        ar.numero,
+        ar.etiqueta,
+        ar.responsable || '',
+        rs.length ? rs.map((r) => `${r.nombre} (${r.activos})`).join(', ') : '—',
+        rs.reduce((s, r) => s + r.activos, 0)
+      ];
+    });
+
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Áreas', {
+      views: [{ showGridLines: false, zoomScale: 110, zoomScaleNormal: 110 }]
+    });
+    const columnas = [
+      { header: 'Nº', width: 6 },
+      { header: 'Área', width: 42 },
+      { header: 'Responsable del área', width: 34 },
+      { header: 'Responsables (activos)', width: 70 },
+      { header: 'Activos', width: 10 }
+    ];
+    columnas.forEach((c, i) => { ws.getColumn(i + 1).width = c.width; });
+
+    // Misma tabla que los otros exports (TableStyleLight13): cabecera, bandas y filtros.
+    if (filas.length) {
+      ws.addTable({
+        name: 'TablaAreas',
+        ref: 'A1',
+        headerRow: true,
+        style: { theme: 'TableStyleLight13', showRowStripes: true },
+        columns: columnas.map((c) => ({ name: c.header, filterButton: true })),
+        rows: filas
+      });
+    } else {
+      ws.getRow(1).values = columnas.map((c) => c.header);
+    }
+
+    ws.getRow(1).eachCell((cell) => {
+      cell.font = { ...FONT, bold: true };
+      cell.alignment = { horizontal: 'center' };
+    });
+    for (let r = 2; r <= filas.length + 1; r++) {
+      ws.getRow(r).eachCell((cell) => { cell.font = { ...FONT }; });
+    }
+
+    const fecha = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="Areas y responsables-${fecha}.xlsx"`);
+    await wb.xlsx.write(res);
+    res.end();
+  } catch (e) { next(e); }
+}
+
+module.exports = { listAreas, createArea, updateArea, deleteArea, createUbicacion, updateUbicacion, deleteUbicacion, renumerarUbicaciones, exportAreasXlsx };

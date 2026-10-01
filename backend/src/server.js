@@ -112,6 +112,7 @@ async function bootstrap() {
   adm.delete('/custodios/:id', custodios.deleteCustodio);
 
   adm.get('/areas', areas.listAreas);
+  adm.get('/areas/export/xlsx', areas.exportAreasXlsx);
   adm.post('/areas', areas.createArea);
   adm.put('/areas/:id', areas.updateArea);
   adm.delete('/areas/:id', areas.deleteArea);
