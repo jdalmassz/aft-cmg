@@ -98,7 +98,11 @@ let ordenOriginal = []
 
 const idxDe = (id) => areas.value.findIndex((a) => a.id === id)
 
+// La misma hoja en un solo botón: se despliega y sale imprimir o Excel.
+const menuHoja = ref(false)
+
 function entrarOrden() {
+  menuHoja.value = false
   ordenOriginal = areas.value.map((a) => a.id)
   modoOrden.value = true
 }
@@ -214,8 +218,16 @@ onMounted(() => {
         <button class="btn" :disabled="guardandoOrden" @click="guardarOrden">{{ guardandoOrden ? 'Guardando…' : 'Guardar orden' }}</button>
       </span>
       <span class="btns" v-else>
-        <button class="btn sec" title="Hoja de áreas y responsables para papel o PDF" @click="imprimir"><AppIcon name="printer" :size="14" /> Imprimir</button>
-        <button class="btn sec" :disabled="exportando" title="Excel con las áreas y sus responsables" @click="exportarExcel"><AppIcon name="file" :size="14" /> {{ exportando ? 'Generando…' : 'Exportar Excel' }}</button>
+        <span class="hoja">
+          <button class="btn sec" title="Hoja de áreas y responsables: imprimirla o bajarla en Excel" @click="menuHoja = !menuHoja">
+            <AppIcon name="printer" :size="14" /> Imprimir / Excel <AppIcon name="chevron-down" :size="13" />
+          </button>
+          <span v-if="menuHoja" class="capa-hoja" @click="menuHoja = false"></span>
+          <span v-if="menuHoja" class="hoja-menu">
+            <button class="btn sec" @click="menuHoja = false; imprimir()"><AppIcon name="printer" :size="14" /> Imprimir (papel o PDF)</button>
+            <button class="btn sec" :disabled="exportando" @click="menuHoja = false; exportarExcel()"><AppIcon name="file" :size="14" /> {{ exportando ? 'Generando…' : 'Exportar Excel' }}</button>
+          </span>
+        </span>
         <button class="btn sec" title="Mover las áreas arrastrando y renumerarlas 1…N" @click="entrarOrden"><AppIcon name="rows" :size="14" /> Renumerar</button>
         <button class="btn" @click="abrir()"><AppIcon name="plus" :size="14" /> Nueva área</button>
       </span>
@@ -294,6 +306,15 @@ onMounted(() => {
 .area-head .muted { font-size: 12px; }
 .area-jefe { display: flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; margin-top: 3px; }
 .orden-btns { display: flex; gap: 4px; }
+.hoja { position: relative; display: inline-flex; }
+.capa-hoja { position: fixed; inset: 0; z-index: 25; }
+.hoja-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 30;
+  display: flex; flex-direction: column; gap: 4px; min-width: 215px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow-lg); padding: 6px;
+}
+.hoja-menu .btn { width: 100%; justify-content: flex-start; }
 .area.modo { cursor: grab; user-select: none; }
 .area.modo:active { cursor: grabbing; }
 .area.arrastrando { opacity: 0.35; }
