@@ -99,8 +99,12 @@ Las cuentas locales (las creadas con `/api/admin/users`) son de Camagüey.
 
 ### `GET /api/catalogo`
 
-Diccionarios para los formularios: `categorias`, `sucursales`, `ubicaciones`,
-`custodios`, `marcas`. Cada uno con `[{ id, nombre }]`.
+Diccionarios para los formularios: `categorias`, `sucursales`, `areas`,
+`ubicaciones`, `custodios`, `marcas`, `responsablesPorArea`. Cada uno con
+`[{ id, nombre }]` (las `areas` además con `numero`, `etiqueta`,
+`responsable_id` y `responsable`, el jefe asignado desde la pantalla Áreas;
+`responsablesPorArea` agrupa quién tiene activos en cada área:
+`[{ area_id, custodio_id, nombre, activos }]`).
 
 ## Dashboard
 
@@ -234,6 +238,28 @@ Elimina (solo rol `admin`). Devuelve `{ "ok": true }`.
 - `DELETE /api/admin/custodios/:id` → `{ "ok": true }`; `400` si tiene activos asignados
 
 Nombres duplicados → `400` "Ya existe un responsable con ese nombre".
+
+## Admin (áreas y ubicaciones) — solo rol `admin`
+
+- `GET /api/admin/areas` → `{ areas, ubicaciones }`.
+  Cada área: `{ id, numero, nombre, etiqueta, responsable_id, responsable }`
+  (`etiqueta`: «Área 2 - COMERCIAL»; `responsable` es el jefe asignado o `null`).
+  `ubicaciones`: `[{ id, nombre, area_id, activos }]` con el conteo de activos.
+- `POST /api/admin/areas` → `{ "nombre": "...", "responsable_id": null }` → `201`.
+  **El número nunca se manda**: se asigna solo, el siguiente libre (el `numero`
+  del body se ignora). `nombre` es obligatorio → `400` "Pon el nombre del área";
+  un `responsable_id` que no exista → `400` "Ese responsable no existe".
+- `PUT /api/admin/areas/:id` → `{ "nombre": "...", "responsable_id": null }`.
+  Sólo cambian nombre y responsable; **el número no se toca**.
+- `DELETE /api/admin/areas/:id` → `{ "ok": true }`; `400` si tiene ubicaciones.
+- `GET /api/admin/areas/export/xlsx` → Excel *Áreas y responsables* (una fila
+  por área: `Nº`, `Área`, `Responsable del área`, `Responsables (activos)` con
+  el nombre y el conteo de cada uno, y `Activos` total).
+- `POST /api/admin/ubicaciones` `{ nombre, area_id? }` ·
+  `PUT /api/admin/ubicaciones/:id` · `DELETE /api/admin/ubicaciones/:id`
+  (`400` si tiene activos o aparece en movimientos) ·
+  `POST /api/admin/ubicaciones/renumerar` (vuelve a cuadrar los números con los
+  responsables; `FACTURACION` no se toca).
 
 ## Health
 

@@ -31,7 +31,9 @@ CREATE TABLE IF NOT EXISTS sucursales (
   nombre TEXT UNIQUE NOT NULL
 );
 
--- Un área (Área 1, Área 2…) agrupa varias ubicaciones. El nombre es opcional.
+-- Un área (Área 1, Área 2…) agrupa varias ubicaciones. El número nunca se
+-- escribe a mano: al crear se coge solo (el siguiente libre). El nombre se
+-- exige al crear y al editar (la columna queda anulable por el seed inicial).
 CREATE TABLE IF NOT EXISTS areas (
   id SERIAL PRIMARY KEY,
   numero INTEGER UNIQUE NOT NULL,
@@ -53,6 +55,10 @@ CREATE TABLE IF NOT EXISTS custodios (
 
 -- Un responsable puede ser además un usuario del sistema
 ALTER TABLE custodios ADD COLUMN IF NOT EXISTS user_id TEXT UNIQUE REFERENCES users(id) ON DELETE SET NULL;
+
+-- El jefe del área: la persona que responde por toda ella. Se asigna al crear
+-- o editar el área (pantalla Áreas) y de ahí sale el Excel de áreas.
+ALTER TABLE areas ADD COLUMN IF NOT EXISTS responsable_id INTEGER REFERENCES custodios(id);
 
 CREATE TABLE IF NOT EXISTS marcas (
   id SERIAL PRIMARY KEY,
