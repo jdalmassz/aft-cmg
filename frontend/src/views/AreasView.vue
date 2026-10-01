@@ -5,6 +5,7 @@ import AppIcon from '../components/AppIcon.vue'
 import Drawer from '../components/Drawer.vue'
 import { ok, err } from '../toast'
 import { getCatalogo, invalidarCatalogo } from '../catalogo'
+import { construirDocumento, imprimirDocumento } from '../imprimir'
 import { confirmar } from '../confirm'
 
 const areas = ref([])
@@ -65,7 +66,7 @@ async function guardar() {
   } catch (e) { errForm.value = e.message } finally { guardando.value = false }
 }
 
-// El Excel de áreas y responsables: una fila por área con su jefe y su gente.
+// El Excel de áreas: una fila por área con su jefe.
 const exportando = ref(false)
 
 async function exportarExcel() {
@@ -74,6 +75,106 @@ async function exportarExcel() {
     await api.download('/api/admin/areas/export/xlsx', 'Areas-y-responsables-' + new Date().toISOString().slice(0, 10) + '.xlsx')
     ok('Excel descargado')
   } catch (e) { err(e.message) } finally { exportando.value = false }
+}
+
+// La misma hoja, pero para papel: el diálogo del navegador (deja guardar en PDF).
+function imprimir() {
+  imprimirDocumento(construirDocumento({
+    titulo: 'Áreas y Responsables',
+    subtitulo: 'Áreas con su responsable principal',
+    columnas: [{ t: 'Nº' }, { t: 'Área' }, { t: 'Responsable del área' }],
+    filas: areas.value.map((a) => [a.numero, a.etiqueta, a.responsable || ''])
+  }))
+}
+
+// ── Modo orden: «Renumerar» deja mover las áreas arrastrando ─────────────
+// Al entrar sólo se reordena en pantalla; los números se tocan al guardar
+// (POST /api/admin/areas/orden), que los recalcula 1…N en ese orden.
+const modoOrden = ref(false)
+const guardandoOrden = ref(false)
+const arrastrando = ref(null) // id de la tarjeta que se arrastra
+const sobre = ref(null) // id de la tarjeta que tiene debajo
+let ordenOriginal = []
+
+const idxDe = (id) => areas.value.findIndex((a) => a.id === id)
+
+function entrarOrden() {
+  ordenOriginal = areas.value.map((a) => a.id)
+  modoOrden.value = true
+}
+
+function sucio() {
+  return JSON.stringify(areas.value.map((a) => a.id)) !== JSON.stringify(ordenOriginal)
+}
+
+function salirOrden() {
+  modoOrden.value = false
+  arrastrando.value = null
+  sobre.value = null
+  cargar()
+}
+
+function cancelarOrden() {
+  if (!sucio()) return salirOrden()
+  confirmar({
+    titulo: 'Cancelar el orden',
+    mensaje: 'Se pierde el orden que llevas montado y las áreas vuelven como estaban.'
+  }, salirOrden)
+}
+
+async function guardarOrden() {
+  guardandoOrden.value = true
+  try {
+    await api.post('/api/admin/areas/orden', { ids: areas.value.map((a) => a.id) })
+    ok('Orden guardado: áreas renumeradas 1…N')
+    modoOrden.value = false
+    invalidarCatalogo()
+    await cargar()
+  } catch (e) { err(e.message) } finally { guardandoOrden.value = false }
+}
+
+// Mover una posición: el respaldo táctil, porque el arrastre de HTML5 no va
+// en móvil (y en el ratón también sirve).
+function mover(id, dir) {
+  const i = idxDe(id)
+  const j = i + dir
+  if (i < 0 || j < 0 || j >= areas.value.length) return
+  const arr = [...areas.value]
+  const [mov] = arr.splice(i, 1)
+  arr.splice(j, 0, mov)
+  areas.value = arr
+}
+
+// Arrastre con el ratón: al pasar sobre otra tarjeta se coloca antes o
+// después según la mitad en la que se entra, y la lista se reordena al vuelo.
+function dragStart(a, e) {
+  if (!modoOrden.value) return
+  arrastrando.value = a.id
+  e.dataTransfer.effectAllowed = 'move'
+  e.dataTransfer.setData('text/plain', String(a.id)) // Firefox no arranca sin esto
+}
+
+function dragOver(a, e) {
+  if (!modoOrden.value || !arrastrando.value || arrastrando.value === a.id) return
+  e.preventDefault()
+  sobre.value = a.id
+  const arr = areas.value
+  const de = idxDe(arrastrando.value)
+  const para = idxDe(a.id)
+  if (de < 0 || para < 0) return
+  const rect = e.currentTarget.getBoundingClientRect()
+  let destino = para + (e.clientX > rect.left + rect.width / 2 ? 1 : 0)
+  const copia = [...arr]
+  const [mov] = copia.splice(de, 1)
+  if (de < destino) destino -= 1
+  if (destino === de) return
+  copia.splice(destino, 0, mov)
+  areas.value = copia
+}
+
+function dragEnd() {
+  arrastrando.value = null
+  sobre.value = null
 }
 
 // Cada responsable lleva su número dentro del área y el 1 es el que más activos
@@ -125,11 +226,18 @@ onMounted(() => {
     <div class="head">
       <div>
         <h2>Áreas</h2>
-        <p class="muted">{{ areas.length }} área(s) · {{ responsables.length }} responsable(s). Cada área agrupa a sus responsables.</p>
+        <p v-if="modoOrden" class="muted"><b>Modo orden:</b> arrastra las tarjetas (o usa ↑ ↓) hasta donde quieras. Al guardar, los números salen 1…N en ese orden.</p>
+        <p v-else class="muted">{{ areas.length }} área(s) · {{ responsables.length }} responsable(s). Cada área agrupa a sus responsables.</p>
       </div>
-      <span class="btns">
+      <span class="btns" v-if="modoOrden">
+        <button class="btn sec" @click="cancelarOrden">Cancelar</button>
+        <button class="btn" :disabled="guardandoOrden" @click="guardarOrden">{{ guardandoOrden ? 'Guardando…' : 'Guardar orden' }}</button>
+      </span>
+      <span class="btns" v-else>
+        <button class="btn sec" title="Hoja de áreas y responsables para papel o PDF" @click="imprimir"><AppIcon name="printer" :size="14" /> Imprimir</button>
         <button class="btn sec" :disabled="exportando" title="Excel con las áreas y sus responsables" @click="exportarExcel"><AppIcon name="file" :size="14" /> {{ exportando ? 'Generando…' : 'Exportar Excel' }}</button>
-        <button class="btn sec" :disabled="renumerando" title="El 1 pasa a ser el responsable con más activos" @click="renumerar"><AppIcon name="check" :size="14" /> {{ renumerando ? 'Renumerando…' : 'Renumerar' }}</button>
+        <button class="btn sec" :disabled="renumerando" title="El 1 de cada familia pasa a ser el responsable con más activos" @click="renumerar"><AppIcon name="check" :size="14" /> {{ renumerando ? 'Renumerando…' : 'Renumerar ubicaciones' }}</button>
+        <button class="btn sec" title="Mover las áreas arrastrando y renumerarlas 1…N" @click="entrarOrden"><AppIcon name="rows" :size="14" /> Renumerar</button>
         <button class="btn" @click="abrir()"><AppIcon name="plus" :size="14" /> Nueva área</button>
       </span>
     </div>
@@ -138,14 +246,24 @@ onMounted(() => {
     <p v-else-if="error" class="err">{{ error }}</p>
 
     <div v-else class="grid">
-      <div v-for="g in grupos" :key="g.id" class="card area">
+      <div v-for="g in grupos" :key="g.id" class="card area"
+           :class="{ modo: modoOrden, arrastrando: arrastrando === g.id, sobre: sobre === g.id && arrastrando !== g.id }"
+           :draggable="modoOrden"
+           @dragstart="dragStart(g, $event)"
+           @dragover="dragOver(g, $event)"
+           @drop.prevent
+           @dragend="dragEnd">
         <div class="area-head">
           <div>
             <b>{{ g.etiqueta }}</b>
             <span v-if="g.responsable" class="area-jefe"><AppIcon name="user-check" :size="13" /> {{ g.responsable }}</span>
             <span class="muted">{{ g.responsables.length }} responsable(s) · {{ totalActivos(g.responsables) }} activo(s)</span>
           </div>
-          <button class="btn sec sm" title="Editar área" @click="abrir(g)"><AppIcon name="edit" :size="14" /></button>
+          <span class="orden-btns" v-if="modoOrden">
+            <button class="btn sec sm" title="Subir" :disabled="idxDe(g.id) === 0" @click="mover(g.id, -1)"><AppIcon name="chevron-up" :size="14" /></button>
+            <button class="btn sec sm" title="Bajar" :disabled="idxDe(g.id) === areas.length - 1" @click="mover(g.id, 1)"><AppIcon name="chevron-down" :size="14" /></button>
+          </span>
+          <button v-else class="btn sec sm" title="Editar área" @click="abrir(g)"><AppIcon name="edit" :size="14" /></button>
         </div>
       </div>
     </div>
@@ -196,4 +314,9 @@ onMounted(() => {
 .area-head b { display: block; font-size: 14px; }
 .area-head .muted { font-size: 12px; }
 .area-jefe { display: flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; margin-top: 3px; }
+.orden-btns { display: flex; gap: 4px; }
+.area.modo { cursor: grab; user-select: none; }
+.area.modo:active { cursor: grabbing; }
+.area.arrastrando { opacity: 0.35; }
+.area.sobre { outline: 2px dashed var(--primary); outline-offset: 2px; }
 </style>
