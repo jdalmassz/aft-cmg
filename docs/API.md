@@ -252,9 +252,12 @@ Nombres duplicados → `400` "Ya existe un responsable con ese nombre".
 - `PUT /api/admin/areas/:id` → `{ "nombre": "...", "responsable_id": null }`.
   Sólo cambian nombre y responsable; **el número no se toca**.
 - `DELETE /api/admin/areas/:id` → `{ "ok": true }`; `400` si tiene ubicaciones.
-- `GET /api/admin/areas/export/xlsx` → Excel *Áreas y responsables* (una fila
-  por área: `Nº`, `Área`, `Responsable del área`, `Responsables (activos)` con
-  el nombre y el conteo de cada uno, y `Activos` total).
+- `POST /api/admin/areas/orden` → `{ "ids": [3, 1, 4, 2] }` → `{ "ok": true }`.
+  Los `ids` son **todas** las áreas en el orden nuevo (pantalla de «Renumerar»:
+  se reordenan arrastrando); se renumeran `1..N` en esa lista en una sola
+  transacción. Lista incompleta o con ids desconocidos → `400`.
+- `GET /api/admin/areas/export/xlsx` → Excel *Áreas y responsables*: una fila
+  por área con `Nº`, `Área` y `Responsable del área`.
 - `POST /api/admin/ubicaciones` `{ nombre, area_id? }` ·
   `PUT /api/admin/ubicaciones/:id` · `DELETE /api/admin/ubicaciones/:id`
   (`400` si tiene activos o aparece en movimientos) ·

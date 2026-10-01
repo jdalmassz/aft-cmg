@@ -113,6 +113,7 @@ async function bootstrap() {
 
   adm.get('/areas', areas.listAreas);
   adm.get('/areas/export/xlsx', areas.exportAreasXlsx);
+  adm.post('/areas/orden', areas.reordenarAreas);
   adm.post('/areas', areas.createArea);
   adm.put('/areas/:id', areas.updateArea);
   adm.delete('/areas/:id', areas.deleteArea);

@@ -330,48 +330,20 @@ async function renumerarFamilia(pool, fam, usuarioId) {
 }
 
 /**
- * Excel de áreas y responsables: una fila por área, con el jefe (el asignado
- * en la pantalla Áreas) y la lista de sus responsables con su número de activos.
- * Es el documento de esta pantalla; el export de inventario no se toca.
+ * Excel de áreas: una fila por área con su jefe (el responsable que se asigna
+ * en la pantalla Áreas). Ni el listado de responsables de cada área ni el
+ * número de activos: esto es gestión de áreas, no inventario.
  */
 const FONT = { name: 'Aptos Narrow', size: 11, family: 2, scheme: 'minor' };
 
 async function exportAreasXlsx(req, res, next) {
   try {
-    const pool = db.getPool();
-    const [areas, resp] = await Promise.all([
-      pool.query(`
-        SELECT ar.id, ar.numero, ${AREA_ETIQUETA} AS etiqueta, c.nombre AS responsable
-        FROM areas ar LEFT JOIN custodios c ON c.id = ar.responsable_id
-        ORDER BY ar.numero`),
-      pool.query(`
-        SELECT u.area_id, cu.nombre, COUNT(a.id)::int AS activos
-        FROM activos a
-        JOIN ubicaciones u ON u.id = a.ubicacion_id
-        JOIN custodios cu ON cu.id = a.custodio_id
-        WHERE a.tipo = 'AFT' AND a.estado = 'ACTIVO'
-        GROUP BY u.area_id, cu.nombre`)
-    ]);
+    const { rows: areas } = await db.getPool().query(`
+      SELECT ar.numero, ${AREA_ETIQUETA} AS etiqueta, c.nombre AS responsable
+      FROM areas ar LEFT JOIN custodios c ON c.id = ar.responsable_id
+      ORDER BY ar.numero`);
 
-    const porArea = new Map();
-    for (const r of resp.rows) {
-      if (r.area_id == null) continue;
-      if (!porArea.has(r.area_id)) porArea.set(r.area_id, []);
-      porArea.get(r.area_id).push(r);
-    }
-
-    const filas = areas.rows.map((ar) => {
-      // El que más activos tiene el primero, como en la renumeración.
-      const rs = (porArea.get(ar.id) || [])
-        .sort((a, b) => b.activos - a.activos || cmpNombre(a.nombre, b.nombre));
-      return [
-        ar.numero,
-        ar.etiqueta,
-        ar.responsable || '',
-        rs.length ? rs.map((r) => `${r.nombre} (${r.activos})`).join(', ') : '—',
-        rs.reduce((s, r) => s + r.activos, 0)
-      ];
-    });
+    const filas = areas.map((ar) => [ar.numero, ar.etiqueta, ar.responsable || '']);
 
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('Áreas', {
@@ -380,9 +352,7 @@ async function exportAreasXlsx(req, res, next) {
     const columnas = [
       { header: 'Nº', width: 6 },
       { header: 'Área', width: 42 },
-      { header: 'Responsable del área', width: 34 },
-      { header: 'Responsables (activos)', width: 70 },
-      { header: 'Activos', width: 10 }
+      { header: 'Responsable del área', width: 40 }
     ];
     columnas.forEach((c, i) => { ws.getColumn(i + 1).width = c.width; });
 
@@ -416,4 +386,47 @@ async function exportAreasXlsx(req, res, next) {
   } catch (e) { next(e); }
 }
 
-module.exports = { listAreas, createArea, updateArea, deleteArea, createUbicacion, updateUbicacion, deleteUbicacion, renumerarUbicaciones, exportAreasXlsx };
+/**
+ * Orden nuevo de las áreas: la lista de ids es el orden en que se pintan, y los
+ * números se recalculan 1..N en ese orden («Área 1…N» queda como la ve la
+ * persona en pantalla). Dos pasadas en la misma transacción —primero negativos,
+ * después el definitivo— para no chocar con el UNIQUE de `numero`; fuera de la
+ * transacción nadie llega a ver los números negativos.
+ */
+async function reordenarAreas(req, res, next) {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number) : [];
+    if (!ids.length || ids.some((n) => !Number.isInteger(n) || n < 1)) {
+      return res.status(400).json({ error: 'Falta la lista de áreas en el orden nuevo' });
+    }
+    const pool = db.getPool();
+    const { rows: existentes } = await pool.query('SELECT id FROM areas');
+    const conjunto = new Set(existentes.map((r) => r.id));
+    const cuadra = ids.length === existentes.length
+      && new Set(ids).size === ids.length
+      && ids.every((id) => conjunto.has(id));
+    if (!cuadra) {
+      return res.status(400).json({ error: 'La lista de áreas no cuadra con las que hay: recarga y vuelve a intentarlo' });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      for (let i = 0; i < ids.length; i++) {
+        await client.query('UPDATE areas SET numero = $1 WHERE id = $2', [-(i + 1), ids[i]]);
+      }
+      for (let i = 0; i < ids.length; i++) {
+        await client.query('UPDATE areas SET numero = $1 WHERE id = $2', [i + 1, ids[i]]);
+      }
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+    return res.json({ ok: true });
+  } catch (e) { next(e); }
+}
+
+module.exports = { listAreas, createArea, updateArea, deleteArea, createUbicacion, updateUbicacion, deleteUbicacion, renumerarUbicaciones, exportAreasXlsx, reordenarAreas };
