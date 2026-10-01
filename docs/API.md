@@ -125,8 +125,11 @@ Diccionarios para los formularios: `categorias`, `sucursales`, `areas`,
 `valores.valor_cup` es el **total estimado en pesos**: lo que ya esté guardado en
 `valor_cup` + los activos que sólo tienen dólares, multiplicados por
 `valores.tasa` (los que ya tienen `valor_cup` no se convierten otra vez). La
-tasa viene de la variable de entorno `TASA_CAMBIO`; sin ella se usa 750 CUP/USD.
-No se guarda en la base: cambia cada semana y no toca los datos de los activos.
+tasa la manda La Habana: se lee de la API oficial del Banco Central de Cuba
+(USD, Segmento III) y se guarda en memoria 6 horas. Si el BCC no contesta se
+usa la última tasa leída; sin ella, la variable de entorno `TASA_CAMBIO` y,
+faltando también, 750 CUP/USD. No se guarda en la base y no toca los datos de
+los activos.
 
 ## Activos
 

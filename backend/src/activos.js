@@ -18,14 +18,41 @@ const esUtil = (req) => tipoDe(req) === 'UTIL';
  * Tasa de cambio para estimar en CUP los activos que sólo tienen valor en
  * dólares (en la hoja original casi ningún activo tiene valor_cup).
  *
- * No se guarda en la base: la tasa cambia cada semana y no debe tocar los datos
- * de los activos. La fija quien despliega con la variable `TASA_CAMBIO` (en
- * Dokploy → Environment del app); sin variable, la tasa dada por quien mantiene
- * el proyecto: **750 CUP/USD el 26/09/2026**.
+ * La tasa la manda La Habana: se lee de la API oficial del Banco Central de
+ * Cuba (`tasaEspecial` del USD, el Segmento III que publica el BCC). Se guarda
+ * en memoria 6 horas (el BCC la sube una vez al día) y no se toca la base:
+ * la tasa no debe cambiar los datos de los activos. Si el BCC no contesta se
+ * usa la última tasa leída y, si nunca hubo, la variable `TASA_CAMBIO` del
+ * entorno; sin ella, 750 CUP/USD.
  */
-const tasaCambio = () => {
+const TASA_BCC = 'https://api.bc.gob.cu/v1/tasas-de-cambio/activas';
+const TASA_TTL = 6 * 60 * 60 * 1000;
+let cacheTasa = { tasa: null, cuando: 0 };
+
+const tasaRespaldo = () => {
   const t = Number(process.env.TASA_CAMBIO);
   return Number.isFinite(t) && t > 0 ? t : 750;
+};
+
+const tasaCambio = async () => {
+  if (cacheTasa.tasa && Date.now() - cacheTasa.cuando < TASA_TTL) return cacheTasa.tasa;
+  try {
+    const ctrl = new AbortController();
+    const reloj = setTimeout(() => ctrl.abort(), 5000);
+    const r = await fetch(TASA_BCC, { signal: ctrl.signal });
+    clearTimeout(reloj);
+    if (!r.ok) throw new Error(`BCC respondió ${r.status}`);
+    const d = await r.json();
+    const usd = (d.tasas || []).find((x) => x.codigoMoneda === 'USD' && x.estado === 'ACTIVA');
+    const t = Number(usd && usd.tasaEspecial);
+    if (!Number.isFinite(t) || t <= 0) throw new Error('el BCC no trae el USD');
+    cacheTasa = { tasa: t, cuando: Date.now() };
+    return t;
+  } catch (e) {
+    const t = cacheTasa.tasa || tasaRespaldo();
+    console.warn(`tasa de cambio: sin el Banco Central de Cuba (${e.message}); se usa ${t} CUP/USD`);
+    return t;
+  }
 };
 
 async function listActivos(req, res, next) {
@@ -663,7 +690,7 @@ async function dashboard(req, res, next) {
         FROM activos a WHERE a.tipo = 'UTIL'${cUti ? ` AND ${cUti}` : ''}`, qUti.params)
     ]);
     const v = valores.rows[0];
-    const tasa = tasaCambio();
+    const tasa = await tasaCambio();
     return res.json({
       total: total.rows[0].total,
       porCategoria: porCategoria.rows,
