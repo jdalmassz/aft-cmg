@@ -6,6 +6,7 @@ import { construirDocumento, imprimirDocumento } from '../imprimir'
 import AppIcon from '../components/AppIcon.vue'
 import Drawer from '../components/Drawer.vue'
 import { usePreviewPdf } from '../previewPdf'
+import { aIso, aTexto } from '../fechas'
 import { ok, err } from '../toast'
 import { confirmar } from '../confirm'
 
@@ -92,11 +93,15 @@ function editarDrawer() {
   const a = activoSel.value
   if (!a) return
   errores.value = ''
+  // El calendario trabaja en ISO; si la fecha guardada no se puede leer se
+  // conserva cruda aparte para no perderla al guardar.
+  const iso = aIso(a.fecha_adquisicion)
   formulario.value = {
     codigo: a.codigo || '', descripcion: a.descripcion, marca_id: a.marca_id || '',
     modelo: a.modelo || '', valor_cup: a.valor_cup ?? '', valor_usd: a.valor_usd ?? '',
     categoria_id: a.categoria_id || '', sucursal_id: a.sucursal_id || 1,
-    fecha_adquisicion: a.fecha_adquisicion || '', area_id: a.area_id || '',
+    fecha_adquisicion: iso, fecha_cruda: iso ? '' : (a.fecha_adquisicion || ''),
+    area_id: a.area_id || '',
     custodio_id: a.custodio_id || '', estado: a.estado || 'ACTIVO', comentarios: a.comentarios || ''
   }
   editDrawer.value = true
@@ -211,7 +216,7 @@ const chips = computed(() => {
 function emptyForm() {
   return {
     codigo: '', descripcion: '', marca_id: '', modelo: '', valor_cup: '', valor_usd: '',
-    categoria_id: '', sucursal_id: 1, fecha_adquisicion: '', area_id: '',
+    categoria_id: '', sucursal_id: 1, fecha_adquisicion: '', fecha_cruda: '', area_id: '',
     custodio_id: '', estado: 'ACTIVO', comentarios: ''
   }
 }
@@ -301,7 +306,12 @@ async function guardar() {
     for (const k of ['valor_cup', 'valor_usd']) {
       body[k] = body[k] === '' ? null : Number(body[k])
     }
-    if (!body.fecha_adquisicion) body.fecha_adquisicion = null
+    // ISO → texto del original («19-6-26»); si había una fecha ilegible y no
+    // se eligió una nueva, se devuelve tal cual para no perderla.
+    body.fecha_adquisicion = body.fecha_adquisicion
+      ? aTexto(body.fecha_adquisicion)
+      : (body.fecha_cruda || null)
+    delete body.fecha_cruda
     const aid = mostrar.value ? null : activoSel.value?.id
     if (aid) {
       // El servidor devuelve el activo ya calculado: se pinta en la lista al
@@ -733,7 +743,7 @@ onMounted(() => {
               <select v-model="formulario.custodio_id" class="select" :disabled="!formulario.area_id" :title="formulario.area_id ? '' : 'Primero elige el área'"><option value="">{{ formulario.area_id ? '—' : 'Primero elige el área' }}</option><option v-for="r in responsablesForm" :key="r.id" :value="r.id">{{ r.nombre }}</option></select>
             </div>
             <div class="field full"><small class="muted">El área y el responsable deciden dónde queda el activo. Si esa pareja todavía no existe, se guarda sola.</small></div>
-            <div class="field"><label>Fecha de adquisición</label><input v-model="formulario.fecha_adquisicion" class="input" placeholder="dd-mm-año" /></div>
+            <div class="field"><label>Fecha de adquisición</label><input v-model="formulario.fecha_adquisicion" class="input" type="date" /><small v-if="formulario.fecha_cruda" class="muted">La fecha anterior («{{ formulario.fecha_cruda }}») no se pudo leer: elige una nueva para cambiarla.</small></div>
             <div class="field"><label>Valor CUP</label><input v-model="formulario.valor_cup" type="number" step="0.01" class="input" /></div>
             <div class="field"><label>Valor USD</label><input v-model="formulario.valor_usd" type="number" step="0.01" class="input" /></div>
             <div class="field full"><label>Comentarios</label><textarea v-model="formulario.comentarios" class="textarea" rows="3"></textarea></div>
@@ -795,7 +805,7 @@ onMounted(() => {
           <select v-model="formulario.custodio_id" class="select" :disabled="!formulario.area_id" :title="formulario.area_id ? '' : 'Primero elige el área'"><option value="">{{ formulario.area_id ? '—' : 'Primero elige el área' }}</option><option v-for="r in responsablesForm" :key="r.id" :value="r.id">{{ r.nombre }}</option></select>
         </div>
         <div class="field full"><small class="muted">El área y el responsable deciden dónde queda el activo. Si esa pareja todavía no existe, se guarda sola.</small></div>
-        <div class="field"><label>Fecha de adquisición</label><input v-model="formulario.fecha_adquisicion" class="input" placeholder="dd-mm-año" /></div>
+        <div class="field"><label>Fecha de adquisición</label><input v-model="formulario.fecha_adquisicion" class="input" type="date" /><small v-if="formulario.fecha_cruda" class="muted">La fecha anterior («{{ formulario.fecha_cruda }}») no se pudo leer: elige una nueva para cambiarla.</small></div>
         <div class="field"><label>Valor CUP</label><input v-model="formulario.valor_cup" type="number" step="0.01" class="input" /></div>
         <div class="field"><label>Valor USD</label><input v-model="formulario.valor_usd" type="number" step="0.01" class="input" /></div>
         <div class="field full"><label>Comentarios</label><textarea v-model="formulario.comentarios" class="textarea" rows="2"></textarea></div>

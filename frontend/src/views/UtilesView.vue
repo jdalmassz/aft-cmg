@@ -17,6 +17,7 @@ import { construirDocumento, imprimirDocumento } from '../imprimir'
 import AppIcon from '../components/AppIcon.vue'
 import Drawer from '../components/Drawer.vue'
 import { usePreviewPdf } from '../previewPdf'
+import { aIso, aTexto } from '../fechas'
 import { ok, err } from '../toast'
 import { confirmar } from '../confirm'
 
@@ -75,7 +76,7 @@ function emptyForm() {
   return {
     codigo: '', descripcion: '', marca_id: '', modelo: '', cantidad: 1,
     valor_cup: '', valor_usd: '', categoria_id: '', sucursal_id: 1,
-    fecha_adquisicion: '', custodio_id: '', estado: 'ACTIVO', comentarios: ''
+    fecha_adquisicion: '', fecha_cruda: '', custodio_id: '', estado: 'ACTIVO', comentarios: ''
   }
 }
 
@@ -168,12 +169,16 @@ function editarDrawer() {
   const u = utilSel.value
   if (!u) return
   errores.value = ''
+  // El calendario trabaja en ISO; si la fecha guardada no se puede leer se
+  // conserva cruda aparte para no perderla al guardar.
+  const iso = aIso(u.fecha_adquisicion)
   formulario.value = {
     codigo: u.codigo || '', descripcion: u.descripcion, marca_id: u.marca_id || '',
     modelo: u.modelo || '', cantidad: u.cantidad ?? 1,
     valor_cup: u.valor_cup ?? '', valor_usd: u.valor_usd ?? '',
     categoria_id: u.categoria_id || '', sucursal_id: u.sucursal_id || 1,
-    fecha_adquisicion: u.fecha_adquisicion || '', custodio_id: u.custodio_id || '',
+    fecha_adquisicion: iso, fecha_cruda: iso ? '' : (u.fecha_adquisicion || ''),
+    custodio_id: u.custodio_id || '',
     estado: u.estado || 'ACTIVO', comentarios: u.comentarios || ''
   }
   editDrawer.value = true
@@ -191,7 +196,12 @@ async function guardar() {
       body[k] = body[k] === '' ? null : Number(body[k])
     }
     body.cantidad = Number(body.cantidad) > 0 ? Math.trunc(Number(body.cantidad)) : 1
-    if (!body.fecha_adquisicion) body.fecha_adquisicion = null
+    // ISO → texto del original («19-6-26»); si había una fecha ilegible y no
+    // se eligió una nueva, se devuelve tal cual para no perderla.
+    body.fecha_adquisicion = body.fecha_adquisicion
+      ? aTexto(body.fecha_adquisicion)
+      : (body.fecha_cruda || null)
+    delete body.fecha_cruda
     const id = mostrar.value ? null : utilSel.value?.id
     if (id) {
       await api.put(`/api/utiles/${id}`, body)
@@ -495,7 +505,7 @@ onMounted(() => {
             <div class="field"><label>Valor USD</label><input v-model="formulario.valor_usd" class="input" type="number" step="0.01" /></div>
           </div>
           <div class="dos">
-            <div class="field"><label>Fecha de adquisición</label><input v-model="formulario.fecha_adquisicion" class="input" placeholder="dd-mmm-aa" /></div>
+            <div class="field"><label>Fecha de adquisición</label><input v-model="formulario.fecha_adquisicion" class="input" type="date" /><small v-if="formulario.fecha_cruda" class="muted">La fecha anterior («{{ formulario.fecha_cruda }}») no se pudo leer: elige una nueva para cambiarla.</small></div>
             <div class="field"><label>Estado</label><select v-model="formulario.estado" class="select"><option v-for="e in ESTADOS" :key="e" :value="e">{{ e }}</option></select></div>
           </div>
           <div class="field"><label>Comentarios</label><textarea v-model="formulario.comentarios" class="input" rows="3"></textarea></div>
@@ -548,7 +558,7 @@ onMounted(() => {
           <div class="field"><label>Valor USD</label><input v-model="formulario.valor_usd" class="input" type="number" step="0.01" /></div>
         </div>
         <div class="dos">
-          <div class="field"><label>Fecha de adquisición</label><input v-model="formulario.fecha_adquisicion" class="input" placeholder="dd-mmm-aa" /></div>
+          <div class="field"><label>Fecha de adquisición</label><input v-model="formulario.fecha_adquisicion" class="input" type="date" /><small v-if="formulario.fecha_cruda" class="muted">La fecha anterior («{{ formulario.fecha_cruda }}») no se pudo leer: elige una nueva para cambiarla.</small></div>
           <div class="field"><label>Estado</label><select v-model="formulario.estado" class="select"><option v-for="e in ESTADOS" :key="e" :value="e">{{ e }}</option></select></div>
         </div>
         <div class="field"><label>Comentarios</label><textarea v-model="formulario.comentarios" class="input" rows="3"></textarea></div>
