@@ -177,26 +177,6 @@ function dragEnd() {
   sobre.value = null
 }
 
-// Cada responsable lleva su número dentro del área y el 1 es el que más activos
-// tiene. Los números no se mueven solos: se piden aquí, cuando cambia alguien.
-const renumerando = ref(false)
-
-function renumerar() {
-  confirmar({
-    titulo: 'Renumerar por responsable',
-    mensaje: 'Los números vuelven a cuadrarse con sus responsables: el 1 pasa a ser el que más activos tiene y cada activo se queda con su persona. Los cambios quedan en el historial de movimientos. FACTURACION no se toca.'
-  }, async () => {
-    renumerando.value = true
-    try {
-      const r = await api.post('/api/admin/ubicaciones/renumerar', {})
-      const movidos = r.familias.reduce((s, f) => s + (f.movidos || 0), 0)
-      ok(movidos ? `Renumerado: ${movidos} activo(s) movido(s)` : 'Ya estaba cuadrado')
-      invalidarCatalogo()
-      cargar()
-    } catch (e) { err(e.message) } finally { renumerando.value = false }
-  })
-}
-
 function eliminar() {
   const { item } = cajon.value
   confirmar({
@@ -236,7 +216,6 @@ onMounted(() => {
       <span class="btns" v-else>
         <button class="btn sec" title="Hoja de áreas y responsables para papel o PDF" @click="imprimir"><AppIcon name="printer" :size="14" /> Imprimir</button>
         <button class="btn sec" :disabled="exportando" title="Excel con las áreas y sus responsables" @click="exportarExcel"><AppIcon name="file" :size="14" /> {{ exportando ? 'Generando…' : 'Exportar Excel' }}</button>
-        <button class="btn sec" :disabled="renumerando" title="El 1 de cada familia pasa a ser el responsable con más activos" @click="renumerar"><AppIcon name="check" :size="14" /> {{ renumerando ? 'Renumerando…' : 'Renumerar ubicaciones' }}</button>
         <button class="btn sec" title="Mover las áreas arrastrando y renumerarlas 1…N" @click="entrarOrden"><AppIcon name="rows" :size="14" /> Renumerar</button>
         <button class="btn" @click="abrir()"><AppIcon name="plus" :size="14" /> Nueva área</button>
       </span>
