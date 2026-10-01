@@ -35,9 +35,9 @@ PORT=8080
 # de Accesos saldría con http:// (allowedCallbackUrls sólo acepta https).
 TRUST_PROXY=1
 
-# Tasa de cambio para el total en CUP del dashboard: los activos que sólo
-# tienen valor en dólares se multiplican por esta tasa. Cambia cada semana, así
-# que aquí se cambia sin tocar datos. Opcional: sin ella se usa 750.
+# Tasa de cambio para el total en CUP del dashboard: la manda La Habana, se
+# lee sola de la API del Banco Central de Cuba (se guarda en memoria 6 horas).
+# Esta variable es sólo un respaldo por si el BCC no contesta. Opcional.
 TASA_CAMBIO=750
 
 # Accesos (SSO) — https://auth.procovar.cloud
