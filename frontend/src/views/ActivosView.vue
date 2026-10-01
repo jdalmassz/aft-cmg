@@ -231,7 +231,12 @@ function filtrosQuery() {
   return params
 }
 
+let seqCarga = 0
+
 async function cargar() {
+  // Si llegan dos peticiones seguidas (se teclea rápido), gana la última:
+  // la respuesta vieja no pinta ni la lista ni el error.
+  const mia = ++seqCarga
   loading.value = true
   errores.value = ''
   try {
@@ -239,10 +244,15 @@ async function cargar() {
     params.set('limite', String(porPagina.value))
     params.set('offset', String((pagina.value - 1) * porPagina.value))
     const res = await api.get('/api/activos?' + params.toString())
+    if (mia !== seqCarga) return
     activos.value = res.activos
     total.value = res.total
     if (total.value && pagina.value > totalPaginas.value) pagina.value = totalPaginas.value
-  } catch (e) { errores.value = e.message } finally { loading.value = false }
+  } catch (e) {
+    if (mia === seqCarga) errores.value = e.message
+  } finally {
+    if (mia === seqCarga) loading.value = false
+  }
 }
 
 async function cargarCatalogo() {
@@ -252,6 +262,41 @@ async function cargarCatalogo() {
 // Se busca al escribir: no hay que dar Enter ni pulsar «Filtrar». Se espera un
 // poco para no pedir la lista con cada tecla; Enter sigue buscando al momento.
 let tBusqueda = null
+
+// ── Sugerencias del inventario mientras se escribe ──
+// No es una petición aparte: son las primeras filas de la MISMA lista ya
+// cargada, así que no cuesta ni una ida extra a la red. Sólo se enseñan cuando
+// la lista ya corresponde al texto escrito (mientras carga no se pinta nada,
+// para no sugerir filas de otra búsqueda).
+const sugAbierta = ref(false)
+const sugActiva = ref(-1)
+const textoQ = computed(() => q.value.trim())
+const listaAlDia = () =>
+  !loading.value && !errores.value && textoQ.value.length >= 2 && (filtrosAplicados.value.q || '') === textoQ.value
+const sugerencias = computed(() => (sugAbierta.value && listaAlDia() ? activos.value.slice(0, 8) : []))
+
+function enfocarBusqueda() {
+  sugAbierta.value = listaAlDia()
+}
+function cerrarSugerencias() {
+  sugAbierta.value = false
+  sugActiva.value = -1
+}
+function moverSug(d) {
+  if (!sugerencias.value.length) { sugAbierta.value = listaAlDia(); return }
+  const n = sugerencias.value.length
+  sugActiva.value = ((sugActiva.value + d) % n + n) % n
+}
+function elegirSug(a) {
+  cerrarSugerencias()
+  abrirActivo(a)
+}
+function teclaEnter() {
+  const a = sugAbierta.value && sugActiva.value >= 0 ? sugerencias.value[sugActiva.value] : null
+  if (a) return elegirSug(a)
+  cerrarSugerencias()
+  aplicar()
+}
 
 function aplicar() {
   clearTimeout(tBusqueda)
@@ -263,6 +308,10 @@ function aplicar() {
 watch(q, () => {
   clearTimeout(tBusqueda)
   tBusqueda = setTimeout(aplicar, 350)
+  // Mientras se teclea, la lista de sugerencias va abierta (se vacía sola si
+  // la lista todavía no corresponde al texto y vuelve al cargar).
+  sugAbierta.value = textoQ.value.length >= 2
+  sugActiva.value = -1
 })
 
 function limpiar() {
@@ -617,7 +666,22 @@ onMounted(() => {
     </div>
 
     <div class="card filtros">
-      <input v-model="q" class="input" placeholder="Buscar por descripción, modelo, código…" @keyup.enter="aplicar" />
+      <span class="buscador">
+        <input v-model="q" class="input" placeholder="Buscar por descripción, modelo, código…"
+               @focus="enfocarBusqueda" @blur="cerrarSugerencias"
+               @keydown.enter.prevent="teclaEnter"
+               @keydown.down.prevent="moverSug(1)" @keydown.up.prevent="moverSug(-1)"
+               @keydown.esc="cerrarSugerencias" />
+        <span v-if="sugerencias.length" class="sug-lista">
+          <button v-for="(a, i) in sugerencias" :key="a.id" type="button" class="sug-op"
+                  :class="{ on: i === sugActiva }"
+                  @mousedown.prevent="elegirSug(a)" @mouseenter="sugActiva = i">
+            <b>{{ a.codigo || 'ID ' + a.id }}</b>
+            <span class="sug-desc">{{ a.descripcion }}</span>
+            <span class="badge" :class="a.estado === 'ACTIVO' ? 'ok' : 'warn'">{{ a.estado }}</span>
+          </button>
+        </span>
+      </span>
       <select v-model="fCategoria" class="select" @change="aplicar"><option value="">Categoría</option><option v-for="c in catalogo.categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
       <select v-model="fArea" class="select" @change="cambiarArea"><option value="">Área</option><option v-for="a in catalogo.areas" :key="a.id" :value="a.id">{{ a.etiqueta }}</option></select>
       <select v-model="fResponsable" class="select" @change="aplicar"><option value="">Responsable</option><option v-for="r in responsablesFiltro" :key="r.id" :value="r.id">{{ r.nombre }}</option></select>
@@ -897,7 +961,22 @@ onMounted(() => {
 .head .btns { display: flex; gap: 8px; align-items: center; }
 .codigo { color: var(--primary); font-variant-numeric: tabular-nums; }
 .filtros { display: flex; gap: 10px; padding: 12px; margin-bottom: 10px; flex-wrap: wrap; }
-.filtros .input { flex: 1 1 220px; }
+.filtros .buscador { position: relative; flex: 1 1 220px; }
+.filtros .buscador .input { width: 100%; }
+.sug-lista {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 40;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow-lg);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.sug-op {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  padding: 8px 10px; background: none; border: none; cursor: pointer;
+  font-size: 13px; color: var(--text);
+}
+.sug-op.on, .sug-op:hover { background: #eef4ff; }
+.sug-op b { flex: 0 0 auto; }
+.sug-desc { flex: 1; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .filtros .select { flex: 0 1 200px; }
 .filtros .btns { display: flex; gap: 6px; align-items: center; }
 
