@@ -91,34 +91,23 @@ function drawHeader(doc, meta) {
     } catch (_) { /* logo opcional */ }
   }
 
-  // Va en su propia línea, a la derecha, y sólo si hay nombre. Compartiendo la
-  // línea con el período se cruzaban: el período va centrado y éste alineado a la
-  // derecha en el mismo ancho, y con un nombre largo el segundo llegaba al primero.
-  if (meta.generadoPor) {
-    doc.font('Helvetica-Bold').fontSize(9)
-      .text(`Generado por: ${meta.generadoPor}`, M.left, y0 + 72, {
-        width: COL.ruleEnd - M.left, align: 'right', lineBreak: false
-      });
-  }
-
-  // Quién y dónde: sólo el ÁREA. El responsable de los activos se ve en la firma de
-  // abajo («Responsable de los activos» / «Responsable del Área»), y en la cabecera
-  // venía repetido el nombre de quien generaba la hoja cuando era la misma persona.
-  // Baja una línea más que antes: el «Generado por:» ya ocupa la suya.
+  // Quién y dónde: el ÁREA a la izquierda y «Generado por:» a la derecha, en la
+  // MISMA línea. Antes el «Generado por:» iba en una línea propia justo debajo del
+  // período, y con un nombre largo se quedaba pegado a él. El responsable de los
+  // activos no sale aquí: se ve en la firma de abajo.
+  // La línea se reserva aunque no haya área, para que la tabla no suba ni baje.
   let yCols = y0 + 92;
-  const seleccion = [meta.area && ['Área:', meta.area]].filter(Boolean);
-  if (seleccion.length) {
-    let x = M.left;
-    for (const [k, v] of seleccion) {
-      doc.font('Helvetica-Bold');
-      const ancho = doc.widthOfString(k) + doc.widthOfString(' ' + v) + 18;
-      // Un nombre largo baja a la siguiente línea en vez de salirse del margen.
-      if (x > M.left && x + ancho > COL.ruleEnd) { x = M.left; yCols += 14; }
-      kvLine(doc, x, yCols - 6, k, v);
-      x += ancho;
-    }
-    yCols += 14;
+  const yLinea = yCols - 6;
+  const tGen = meta.generadoPor ? `Generado por: ${meta.generadoPor}` : '';
+  doc.font('Helvetica-Bold').fontSize(9);
+  let yGen = yLinea;
+  if (meta.area && tGen &&
+      doc.widthOfString('Área: ' + meta.area) + 16 + doc.widthOfString(tGen) > COL.ruleEnd - M.left) {
+    yGen = yLinea + 14; // no caben juntos: el «Generado por:» baja una línea
   }
+  if (meta.area) kvLine(doc, M.left, yLinea, 'Área:', meta.area);
+  if (tGen) doc.text(tGen, M.left, yGen, { width: COL.ruleEnd - M.left, align: 'right', lineBreak: false });
+  yCols = Math.max(yLinea, yGen) + 26;
   doc.font('Helvetica-Bold').fontSize(9);
   doc.text('No. Invent.', M.left, yCols, { width: COL.codigoFin - M.left, align: 'right', lineBreak: false });
   doc.text('Descripción', COL.desc, yCols, { lineBreak: false });
