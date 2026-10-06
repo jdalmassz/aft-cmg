@@ -101,15 +101,12 @@ function drawHeader(doc, meta) {
       });
   }
 
-  // Quién y dónde: el área de la hoja y la persona que responde por ella. Van los dos
-  // ahí arriba, porque quien recibe el papel tiene que leerlo sin interpretar el
-  // cuerpo: una hoja firmada sin decir el almacén no sirve para nada.
+  // Quién y dónde: sólo el ÁREA. El responsable de los activos se ve en la firma de
+  // abajo («Responsable de los activos» / «Responsable del Área»), y en la cabecera
+  // venía repetido el nombre de quien generaba la hoja cuando era la misma persona.
   // Baja una línea más que antes: el «Generado por:» ya ocupa la suya.
   let yCols = y0 + 92;
-  const seleccion = [
-    meta.area && ['Área:', meta.area],
-    meta.responsable && ['Responsable:', meta.responsable]
-  ].filter(Boolean);
+  const seleccion = [meta.area && ['Área:', meta.area]].filter(Boolean);
   if (seleccion.length) {
     let x = M.left;
     for (const [k, v] of seleccion) {
