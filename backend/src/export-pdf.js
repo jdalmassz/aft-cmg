@@ -91,15 +91,21 @@ function drawHeader(doc, meta) {
     } catch (_) { /* logo opcional */ }
   }
 
-  doc.font('Helvetica-Bold').fontSize(9)
-    .text(`Generado por: ${meta.generadoPor}`, M.left, y0 + 58, {
-      width: COL.ruleEnd - M.left, align: 'right'
-    });
+  // Va en su propia línea, a la derecha, y sólo si hay nombre. Compartiendo la
+  // línea con el período se cruzaban: el período va centrado y éste alineado a la
+  // derecha en el mismo ancho, y con un nombre largo el segundo llegaba al primero.
+  if (meta.generadoPor) {
+    doc.font('Helvetica-Bold').fontSize(9)
+      .text(`Generado por: ${meta.generadoPor}`, M.left, y0 + 72, {
+        width: COL.ruleEnd - M.left, align: 'right', lineBreak: false
+      });
+  }
 
   // Quién y dónde: el área de la hoja y la persona que responde por ella. Van los dos
   // ahí arriba, porque quien recibe el papel tiene que leerlo sin interpretar el
-  // cuerpo: una hoja firmada por ALIESKI sin decir el almacén no sirve para nada.
-  let yCols = y0 + 84;
+  // cuerpo: una hoja firmada sin decir el almacén no sirve para nada.
+  // Baja una línea más que antes: el «Generado por:» ya ocupa la suya.
+  let yCols = y0 + 92;
   const seleccion = [
     meta.area && ['Área:', meta.area],
     meta.responsable && ['Responsable:', meta.responsable]
@@ -157,24 +163,19 @@ function drawFooter(doc, y) {
   // que se eligió a mano en la hoja de conteo, o si no, el de más activos del área.
   const delArea = doc._meta.responsableAreaSel || doc._meta.responsableArea || '';
   /*
-   * LOS DOS NOMBRES SALEN PUESTOS. Lo que queda por hacer a mano es firmar.
+   * EL RESPONSABLE DEL CONTEO SE ESCRIBE A MANO. La hoja se imprime y quien va a
+   * contar pone su nombre al firmar: por eso la izquierda sale SIEMPRE en blanco,
+   * con su raya para rellenar.
    *
-   * El de la derecha —quien responde de los activos— ya venía relleno cuando se sabía
-   * quién es. El de la izquierda —quien hace el conteo— salía SIEMPRE en blanco, y es
-   * el que menos sentido tenía dejar vacío: lo está haciendo quien acaba de pulsar el
-   * botón, y el sistema sabe su nombre desde que entró. «Que no tengan que escribir,
-   * así es firmar solamente» (pedido del 30/09/2026).
-   *
-   * Si por lo que sea no hay nombre, vuelve la raya: una hoja con un hueco se rellena
-   * a bolígrafo, pero una con el nombre equivocado se firma sin mirar.
+   * El de la derecha —quien responde de los activos— sigue saliendo puesto cuando
+   * se sabe quién es; si no hay nombre, también vuelve la raya.
    */
-  const quienCuenta = (doc._meta.generadoPor || '').trim();
-  const lineaIzq = `Nombre(s) y Apellidos: ${quienCuenta || '______________________'}`;
+  const lineaIzq = 'Nombre(s) y Apellidos: ______________________';
   const lineaDer = `Nombre(s) y Apellidos: ${resp || delArea || '______________________'}`;
   // Un nombre largo no se corta: si no cabe en la mitad de la página, baja el
   // tamaño de la letra (las dos mitades juntas, para que queden parejas). Se miden
-  // LAS DOS: antes sólo se miraba la derecha, y desde que la izquierda también lleva
-  // nombre puede ser ella la que no quepa.
+  // LAS DOS: aunque la izquierda sea una raya, el de la derecha puede ser el que no
+  // quepa.
   doc.font('Helvetica').fontSize(9);
   let tam = 9;
   while (tam > 6.5 && Math.max(doc.widthOfString(lineaIzq), doc.widthOfString(lineaDer)) > w) {
@@ -380,17 +381,13 @@ async function exportActivosPdf(req, res, next) {
       // Quien se eligió a mano para firmar como responsable del área.
       req.query.resp_area ? pool.query('SELECT nombre FROM custodios WHERE id = $1', [req.query.resp_area]) : null,
       /*
-       * EL NOMBRE COMPLETO DE QUIEN ESTÁ CONTANDO, para que no tenga que escribirlo.
+       * QUIEN GENERÓ LA HOJA, para el «Generado por:» de la cabecera y el Autor del
+       * PDF. No va en la firma: el responsable del conteo se escribe a mano.
        *
        * Sale del RESPONSABLE enganchado a su usuario (`custodios.user_id`) y no del
-        * campo `nombre` de la cuenta, porque ahí está el nombre con el que entra —
-        * «admin», «usuario»— y eso en una hoja que se firma no vale: quien la
-       * recibe necesita nombre y apellidos. `custodios` los tiene bien escritos porque
-       * son los mismos que salen en todo el inventario.
-       *
-       * Sin responsable enganchado se cae al nombre de la cuenta, y si tampoco, la
-       * hoja sale con la raya para rellenar a mano. Una hoja con un hueco se rellena;
-       * una con el nombre equivocado se firma sin mirar.
+       * campo `nombre` de la cuenta, porque ahí está el nombre con el que entra —
+       * «admin», «usuario»— y eso no sirve como identificación. `custodios` los tiene
+       * bien escritos porque son los mismos que salen en todo el inventario.
        */
       req.user?.id
         ? pool.query('SELECT nombre FROM custodios WHERE user_id = $1 LIMIT 1', [req.user.id])
