@@ -129,9 +129,6 @@ function soltar() {
   cursor: pointer; color: var(--text);
 }
 .dw-close:hover { background: #e2e8f0; }
-/* La vista previa de la hoja no tiene ✕: la cabecera queda sin botón, pero el
-   título y el subtítulo siguen vivos para que se sepa qué se está viendo. */
-.dw-head--notitle { justify-content: center; }
 .dw-body { flex: 1; overflow-y: auto; padding: 16px 18px; }
 .dw-foot { display: flex; gap: 8px; flex-wrap: wrap; padding: 14px 18px; border-top: 1px solid var(--border); }
 .dw-foot .btn { flex: 1; justify-content: center; }

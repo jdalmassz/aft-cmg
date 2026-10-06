@@ -104,9 +104,6 @@ table.tbl tr:hover td { background: #f8fafc; }
 .form-grid.una .full { grid-column: auto; }
 .field label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
 
-.fade-enter-active, .fade-leave-active { transition: opacity 0.18s; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
-
 /* Historial de movimientos (timeline) */
 .timeline { display: flex; flex-direction: column; gap: 14px; }
 .tl-item { position: relative; display: flex; gap: 12px; }

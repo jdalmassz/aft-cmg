@@ -49,9 +49,7 @@ const exportandoPdf = ref(false)
 const exportandoExcel = ref(false)
 const imprimiendo = ref(false)
 const conteoAbierto = ref(false)
-// `pct`: qué parte del inventario entra en la hoja. 100 = todo. Un conteo por
-// muestreo es lo normal — el inventario entero no se cuenta cada vez.
-const conteo = ref({ area: '', responsable: '', pct: 100 })
+const conteo = ref({ area: '', responsable: '' })
 const menuExcel = ref(false)
 const qrAbierto = ref(false)
 const qrImagenes = ref([])
@@ -457,8 +455,6 @@ function paramsConteo() {
   const params = new URLSearchParams()
   if (c.area) params.set('area', c.area)
   if (c.responsable) params.set('custodio', c.responsable)
-  // El 100 % no se manda: es lo de siempre y así la URL no cambia para quien ya la usa.
-  if (Number(c.pct) > 0 && Number(c.pct) < 100) params.set('pct', String(c.pct))
   return params
 }
 
@@ -468,8 +464,7 @@ function nombreConteo() {
     c.area ? areaDe(c.area) : '',
     c.responsable ? nome(catalogo.value.custodios, c.responsable) : ''
   ].filter(Boolean).join('-')
-  const pct = Number(c.pct) > 0 && Number(c.pct) < 100 ? `-${c.pct}pc` : ''
-  return 'Conteo-fisico' + (parte ? '-' + parte.replace(/\s+/g, '_') : '') + pct + '-' + new Date().toISOString().slice(0, 10) + '.pdf'
+  return 'Conteo-fisico' + (parte ? '-' + parte.replace(/\s+/g, '_') : '') + '-' + new Date().toISOString().slice(0, 10) + '.pdf'
 }
 
 const nombreExcel = () => 'AFT-Camaguey-' + new Date().toISOString().slice(0, 10) + '.xlsx'
@@ -895,21 +890,6 @@ onMounted(() => {
           <small v-else-if="conteo.area && responsablesConteo.length === 0" class="muted">Sin responsables en esta área.</small>
           <small v-else-if="conteo.responsable" class="muted">Sale sólo lo suyo: nada de otros responsables. Él firma la hoja.</small>
         </div>
-
-        <div class="field">
-          <label>Cuánto se cuenta</label>
-          <select v-model="conteo.pct" class="select">
-            <option :value="100">Todo (100 %)</option>
-            <option :value="50">La mitad (50 %)</option>
-            <option :value="25">Un cuarto (25 %)</option>
-            <option :value="10">El 10 %</option>
-            <option :value="5">El 5 %</option>
-          </select>
-          <small v-if="Number(conteo.pct) < 100" class="muted">
-            Sale esa parte de los activos, elegida siempre igual: reimprimir la hoja da
-            los mismos. Cambia sola cada mes, para que no se cuenten siempre los mismos.
-          </small>
-        </div>
         <div class="field" v-if="!listoParaPdf"><small class="muted">Elige el área o el responsable: una hoja de conteo no se imprime con todo mezclado.</small></div>
       </div>
       <template #pie>
@@ -1011,8 +991,6 @@ table.tbl.compact th, table.tbl.compact td { padding: 5px 9px; font-size: 12.5px
 
 .back { background: none; border: none; cursor: pointer; color: var(--muted); padding: 4px; border-radius: 6px; display: flex; flex-shrink: 0; }
 .back:hover { color: var(--primary); background: #eef4ff; }
-.nota { font-size: 12px; margin-top: 14px; }
-
 /* Vista previa del PDF: la hoja entera, con su fondo gris de papel. */
 .preview-caja {
   flex: 1; min-height: 0;

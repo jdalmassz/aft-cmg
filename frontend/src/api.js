@@ -84,4 +84,4 @@ function formatMoneda(n) {
   return Number(n).toLocaleString('es-CU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-export { api, fetchMe, logout, setSession, clearSession, getUser, getToken, formatMoneda }
+export { api, fetchMe, logout, clearSession, getUser, getToken, formatMoneda }
