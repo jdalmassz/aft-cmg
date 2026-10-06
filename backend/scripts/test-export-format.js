@@ -12,13 +12,13 @@ const sample = [
   {
     codigo: 'AFT-0001', descripcion: 'SILLAS DE MADERA', marca: null, modelo: null,
     valor_cup: null, categoria: 'Muebles, Enseres y Equipos de Oficina', sucursal: 'Camagüey',
-    fecha_adquisicion: null, ubicacion: 'COMERCIAL', custodio: 'ALFREDO LAUDELINO HERNANDEZ OLIVA',
+    fecha_adquisicion: null, ubicacion: 'COMERCIAL', custodio: 'CUSTODIO DE PRUEBA',
     valor_usd: null, comentarios: null
   },
   {
     codigo: 'AFT-0030', descripcion: 'LAPTOP', marca: 'ACER ', modelo: 'ASPIRE 315',
     valor_cup: null, categoria: 'Aparatos y equipos técnicos especiales', sucursal: 'Camagüey',
-    fecha_adquisicion: '19-6-26', ubicacion: 'ECONOMIA', custodio: 'DAYANA GARCIA ARENCIBIA',
+    fecha_adquisicion: '19-6-26', ubicacion: 'ECONOMIA', custodio: 'OTRA PERSONA DE PRUEBA',
     valor_usd: 550, comentarios: null
   }
 ];

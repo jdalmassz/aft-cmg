@@ -1,8 +1,6 @@
-// Integración con Accesos (SSO de Procovar).
-// Esta lógica sale de leer procovar/delivery/src/lib/procovar-auth.ts y los endpoints
-// de auth.procovar.cloud. No la reescribas de memoria: aquí está tal cual.
-//
-// Ver guía: ~/Downloads/Untitled (1).md
+// Integración con Accesos (SSO corporativo).
+// Esta lógica sale de leer la implementación oficial de Accesos y sus endpoints.
+// No la reescribas de memoria: aquí está tal cual.
 
 const crypto = require('crypto');
 
@@ -168,10 +166,10 @@ const ROLES_TODAS_LAS_SUCURSALES = new Set(['DESARROLLADOR', 'SUPER ADMIN']);
  * Es una lista DISTINTA de la de arriba, y ésa es toda la gracia. Hasta hoy había una
  * sola bandera —`rol === 'admin'`— que significaba las dos cosas a la vez: «puede
  * administrar» y «ve las ocho sucursales». Por eso sólo administraban DESARROLLADOR y
- * SUPER ADMIN, y Junior, que es ADMINISTRADOR de Camagüey y es quien lleva el
- * inventario, no podía crear ni un área.
+ * SUPER ADMIN, y un administrador de sucursal que lleva el inventario no podía crear
+ * ni un área.
  *
- * Mezclarlas es exactamente la fuga contra la que avisa el CLAUDE.md de Procovar:
+ * Mezclarlas es exactamente la fuga contra la que avisa el CLAUDE.md del proyecto:
  * «ADMINISTRADOR es de UNA sucursal; cualquier comprobación del tipo *¿contiene admin?*
  * le da las ocho». Separadas, un administrador de sucursal administra LO SUYO y sigue
  * sin ver Holguín.
@@ -204,7 +202,7 @@ function rolInterno(rol) {
  * De todos los roles que trae una persona, el MÁS CAPAZ que este sistema reconozca.
  *
  * Coger el primero de la lista dejaba el resultado a merced del orden en que vinieran.
- * Y es un caso real, no teórico: a Arais se le añadió ECONOMICA **encima** de su
+ * Y es un caso real, no teórico: a una persona se le añadió ECONOMICA **encima** de su
  * SUPERVISOR para no quitarle lo que ya usaba en otras aplicaciones, así que llega con
  * los dos. Con «el primero», el SUPERVISOR se comía al ECONOMICA y seguía sin poder
  * crear un área.

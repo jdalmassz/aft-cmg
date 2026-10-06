@@ -130,7 +130,7 @@ function responsablesDe(areaId) {
  * Aquí también estaba apagado hasta elegir un área, y aquí molesta todavía más: sacar
  * el papel de UNA persona es el caso normal —es quien firma la hoja— y obligaba a saber
  * de antemano en qué área está. Quien tiene cosas en dos áreas necesitaba dos hojas
- * para lo que es un solo conteo. Jose, 30/09/2026: «poder seleccionar el responsable y
+ * para lo que es un solo conteo. Pedido el 30/09/2026: «poder seleccionar el responsable y
  * que salga todo de ese sin necesidad del área».
  */
 // El marco del visor de la vista previa. Se le pasa a `preview.imprimir` para que
@@ -155,10 +155,10 @@ const responsablesConteo = computed(() => {
  * Aquí el desplegable de responsable estaba apagado hasta elegir un área, y decía
  * «Primero elige el área». En el formulario eso tiene sentido —el servidor deduce la
  * ubicación a partir del área Y el responsable—, pero al FILTRAR no: «qué tiene
- * Alieski» es una pregunta entera por sí sola, y encima es uno de los cortes que ya
+ * esta persona» es una pregunta entera por sí sola, y encima es uno de los cortes que ya
  * hace el exporte. Obligaba a saber de antemano en qué área está una persona, que es
  * justo lo que se viene a averiguar — y quien tiene cosas en dos áreas no se podía
- * mirar de una vez. Jose, 30/09/2026.
+ * mirar de una vez. Pedido el 30/09/2026.
  *
  * Salen los que TIENEN activos y no el padrón entero: un responsable sin nada sólo
  * sirve para elegirlo y que la lista salga vacía.
@@ -375,7 +375,7 @@ async function guardar() {
        * sigue perteneciendo a lo que se está mirando, y editar es justo lo que puede
        * sacarla de ahí. Con el filtro «Área 3» puesto, mover el activo al Área 6 lo
        * dejaba en la lista —ya con el área nueva escrita al lado, que es lo raro— hasta
-       * que alguien refrescaba a mano. Lo reportó Jose el 30/09/2026: «lo cambio y se
+        * que alguien refrescaba a mano. Lo reportaron el 30/09/2026: «lo cambio y se
        * sigue quedando, tengo que refrescar».
        *
        * Se reconcilia con el servidor en vez de decidirlo aquí a propósito: repetir en
@@ -443,7 +443,7 @@ function cambiarAreaConteo() {
  *
  * Antes exigía las dos, y por eso no se podía sacar la hoja de una persona sin saber
  * antes en qué área está — y quien tiene cosas en dos áreas necesitaba dos hojas para
- * un solo conteo. El papel lo firma el responsable, así que «todo lo de Alieski» es
+ * un solo conteo. El papel lo firma el responsable, así que «todo lo de esta persona» es
  * una hoja perfectamente válida.
  */
 const listoParaPdf = computed(() => !!conteo.value.area || !!conteo.value.responsable)

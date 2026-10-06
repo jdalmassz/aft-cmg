@@ -163,7 +163,7 @@ function drawFooter(doc, y) {
    * quién es. El de la izquierda —quien hace el conteo— salía SIEMPRE en blanco, y es
    * el que menos sentido tenía dejar vacío: lo está haciendo quien acaba de pulsar el
    * botón, y el sistema sabe su nombre desde que entró. «Que no tengan que escribir,
-   * así es firmar solamente» (Jose, 30/09/2026).
+   * así es firmar solamente» (pedido del 30/09/2026).
    *
    * Si por lo que sea no hay nombre, vuelve la raya: una hoja con un hueco se rellena
    * a bolígrafo, pero una con el nombre equivocado se firma sin mirar.
@@ -383,8 +383,8 @@ async function exportActivosPdf(req, res, next) {
        * EL NOMBRE COMPLETO DE QUIEN ESTÁ CONTANDO, para que no tenga que escribirlo.
        *
        * Sale del RESPONSABLE enganchado a su usuario (`custodios.user_id`) y no del
-       * campo `nombre` de la cuenta, porque ahí está el nombre con el que entra —
-       * «arais», «Junior», «admin»— y eso en una hoja que se firma no vale: quien la
+        * campo `nombre` de la cuenta, porque ahí está el nombre con el que entra —
+        * «admin», «usuario»— y eso en una hoja que se firma no vale: quien la
        * recibe necesita nombre y apellidos. `custodios` los tiene bien escritos porque
        * son los mismos que salen en todo el inventario.
        *

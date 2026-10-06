@@ -107,7 +107,7 @@ export function imprimirDocumento(html) {
  * deja al que la pidió teniendo que buscar el botón de imprimir dentro del visor. Y si
  * el navegador bloquea la ventana emergente —que es lo normal cuando salta sola— no
  * pasa nada visible y hay que volver a darle. De ahí lo de «tengo que dar imprimir tres
- * veces» (Arais, contado por Jose el 30/09/2026).
+ * veces» (contado el 30/09/2026).
  *
  * Ahora el PDF se carga en el marco oculto y se imprime desde ahí: un clic, un diálogo.
  * Si el navegador no deja imprimir un PDF incrustado, entonces sí se abre la pestaña —

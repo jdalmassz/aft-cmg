@@ -279,7 +279,7 @@ const post = (ruta, cookie, cuerpo, auth) => pedido({ url: `${APP}${ruta}`, meto
     await esperarSalud(APP_PUERTO);
 
     console.log('\n1. La firma y la lista de vueltas (paso 1 y 2 del documento)');
-    escenario.user = { id: 'u1', email: 'maria@procovar.cu', name: 'MARIA PEREZ', isSystemAdmin: false };
+    escenario.user = { id: 'u1', email: 'u1@ejemplo.cu', name: 'MARIA PEREZ', isSystemAdmin: false };
     escenario.memberships = [{ organization: { slug: 'cam', name: 'Camagüey' }, roles: ['SUPERVISOR'] }];
 
     let r = await entrar('/activos');
@@ -303,7 +303,7 @@ const post = (ruta, cookie, cuerpo, auth) => pedido({ url: `${APP}${ruta}`, meto
     ok('la sesión sobrevive a otra petición', (await get('/api/me', cam)).status === 200);
 
     console.log('\n3. Otra sucursal: entra pero no ve nada');
-    escenario.user = { id: 'u2', email: 'pedro@procovar.cu', name: 'PEDRO GARCIA', isSystemAdmin: false };
+    escenario.user = { id: 'u2', email: 'u2@ejemplo.cu', name: 'PEDRO GARCIA', isSystemAdmin: false };
     escenario.memberships = [{ organization: { slug: 'hol', name: 'Holguín' }, roles: ['GESTOR'] }];
     r = await entrar();
     const hol = r.cookie;
@@ -319,7 +319,7 @@ const post = (ruta, cookie, cuerpo, auth) => pedido({ url: `${APP}${ruta}`, meto
     ok('ni el listado global de movimientos', json(await get('/api/movimientos', hol)).movimientos.length === 0);
 
     console.log('\n4. Los dos roles que ven las ocho sucursales');
-    escenario.user = { id: 'u3', email: 'jose@procovar.cu', name: 'JOSE', isSystemAdmin: false };
+    escenario.user = { id: 'u3', email: 'u3@ejemplo.cu', name: 'JORGE LOPEZ', isSystemAdmin: false };
     escenario.memberships = [{ organization: { slug: 'hab', name: 'La Habana' }, roles: ['DESARROLLADOR'] }];
     r = await entrar();
     const dev = r.cookie;
@@ -328,20 +328,20 @@ const post = (ruta, cookie, cuerpo, auth) => pedido({ url: `${APP}${ruta}`, meto
     ok('ve los datos aunque su sucursal sea La Habana', json(await get('/api/activos', dev)).total === 57);
     ok('y administra', (await get('/api/admin/users', dev)).status === 200);
 
-    escenario.user = { id: 'u4', email: 'otro@procovar.cu', name: 'OTRO', isSystemAdmin: false };
+    escenario.user = { id: 'u4', email: 'u4@ejemplo.cu', name: 'OTRO', isSystemAdmin: false };
     escenario.memberships = [{ organization: { slug: 'gr', name: 'Granma' }, roles: ['SUPER ADMIN'] }];
     r = await entrar();
     ok('SUPER ADMIN → rol admin', json(await get('/api/me', r.cookie)).user.rol === 'admin');
 
     console.log('\n5. Rol desconocido y persona sin sucursal');
-    escenario.user = { id: 'u5', email: 'nuevo@procovar.cu', name: 'ROL NUEVO', isSystemAdmin: false };
+    escenario.user = { id: 'u5', email: 'u5@ejemplo.cu', name: 'ROL NUEVO', isSystemAdmin: false };
     escenario.memberships = [{ organization: { slug: 'cam', name: 'Camagüey' }, roles: ['AUDITOR'] }];
     r = await entrar();
     me = json(await get('/api/me', r.cookie)).user;
     ok('rol que no está en la tabla → el de MENOS permisos', me.rol === 'usuario' && me.rol_accesos === null, `${me.rol}/${me.rol_accesos}`);
     ok('y no administra', (await get('/api/admin/users', r.cookie)).status === 403);
 
-    escenario.user = { id: 'u6', email: 'sin@procovar.cu', name: 'SIN SUCURSAL', isSystemAdmin: false };
+    escenario.user = { id: 'u6', email: 'u6@ejemplo.cu', name: 'SIN SUCURSAL', isSystemAdmin: false };
     escenario.memberships = [];
     r = await entrar();
     me = json(await get('/api/me', r.cookie)).user;

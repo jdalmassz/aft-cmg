@@ -1,7 +1,7 @@
 // Pruebas de la integración con Accesos que NO necesitan base de datos:
 //   node scripts/test-auth-sso.js
 //
-// Cubre lo que ya costó caro una vez: la tabla de los siete roles (que el
+// Cubre lo que ya costó caro una vez: la tabla de roles de Accesos (que el
 // desconocido caiga al de MENOS permisos), la traducción del slug de la
 // sucursal, la firma HMAC con la clave leída en hexadecimal, el returnTo y el
 // alcance por sucursal.
@@ -27,19 +27,21 @@ function ok(nombre, fn) {
 
 const req = (protocol = 'https', host = 'aft.procovar.cloud') => ({ protocol, get: () => host });
 
-console.log('Roles (los siete, comparados como texto)');
+console.log('Roles (comparados como texto)');
 
 const ESPERADOS = {
   DESARROLLADOR: 'admin',
   'SUPER ADMIN': 'admin',
-  GERENTE: 'usuario',
-  ADMINISTRADOR: 'usuario', // de UNA sucursal: ésa es la fuga si sale admin
+  GERENTE: 'admin', // también administra el catálogo de su sucursal
+  ADMINISTRADOR: 'admin', // administra LO SUYO: una sucursal, no las ocho
+  ECONOMICA: 'admin', // lleva el inventario de su sucursal: administra LO SUYO
+  ANALISTA: 'usuario',
   SUPERVISOR: 'usuario',
   GESTOR: 'usuario',
   OPERADOR: 'usuario'
 };
 
-ok('los siete roles de Accesos están en la tabla', () => {
+ok('los roles de Accesos están en la tabla', () => {
   assert.deepStrictEqual([...sso.ROLES_ACCESOS].sort(), Object.keys(ESPERADOS).sort());
 });
 

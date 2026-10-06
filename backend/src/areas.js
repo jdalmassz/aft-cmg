@@ -97,8 +97,8 @@ async function updateArea(req, res, next) {
  * Antes bastaba con que el área tuviera una ubicación para negarse, aunque no tuviera
  * ni un activo dentro, y el mensaje decía «muévelas a otra área primero». Eso era un
  * callejón sin salida: desde la pantalla de Áreas no se borra una ubicación suelta, así
- * que un área con un cubículo vacío no había forma de quitarla. Le pasó a Jose el
- * 30/09/2026 con el área 3 después de sacarle el último activo: cero activos, un
+ * que un área con un cubículo vacío no había forma de quitarla. Pasó el 30/09/2026
+ * con el área 3 después de sacarle el último activo: cero activos, un
  * cubículo vacío, y el botón de eliminar diciendo que no.
  *
  * Lo que de verdad hay que proteger son los DATOS, no las estanterías donde no hay nada:
@@ -110,7 +110,7 @@ async function updateArea(req, res, next) {
  * (ver `schema.sql`). Antes la clave ajena lo impedía, y forzarlo habría dejado el
  * movimiento diciendo que el activo vino de ninguna parte. Ahora la referencia se queda
  * en NULL y el renglón sigue contando de dónde salió: «se puede borrar y que se sepa de
- * dónde se movió, y ya» (Jose, 30/09/2026).
+ * dónde se movió, y ya» (pedido del 30/09/2026).
  */
 async function deleteArea(req, res, next) {
   try {

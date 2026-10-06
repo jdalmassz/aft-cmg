@@ -134,7 +134,7 @@ CREATE TABLE IF NOT EXISTS movimientos (
 -- forzar el borrado era peor — el movimiento pasaría a decir que el activo vino de
 -- ninguna parte.
 --
--- Jose lo zanjó el 30/09/2026: «se puede borrar y que se sepa de dónde se movió, y ya».
+-- Resuelto el 30/09/2026: «se puede borrar y que se sepa de dónde se movió, y ya».
 -- Con el nombre copiado aquí, el historial se sostiene solo: la ubicación se borra, la
 -- referencia se pone a NULL y el renglón sigue diciendo de dónde salió.
 ALTER TABLE movimientos ADD COLUMN IF NOT EXISTS ubicacion_origen_nombre TEXT;

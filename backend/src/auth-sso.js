@@ -123,7 +123,7 @@ async function callback(req, res) {
      * sucursal** —por eso las ve todas—, así que no tiene ni una membresía de la que
      * sacar nada. Diez cuentas entraban sin rol y sin sucursal, veían cero activos, y la
      * pantalla les decía «entraste sin sucursal asignada» como si el problema fuera de
-     * ellas. Jose, 30/09/2026, con su propia cuenta delante.
+     * ellas. Visto el 30/09/2026 con una cuenta de SUPER ADMIN delante.
      *
      * `data.role` y `data.roles` los manda Accesos desde hoy, con los mismos nombres que
      * ya usaba `verify-session`. El orden importa: primero el rol global de la persona y

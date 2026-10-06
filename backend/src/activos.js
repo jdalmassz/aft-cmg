@@ -469,7 +469,7 @@ async function updateActivo(req, res, next) {
     // No se veía desde una cuenta global —un DESARROLLADOR o un SUPER ADMIN no llevan
     // condición de sucursal, así que la consulta salía limpia— ni desde una cuenta sin
     // sucursal, que devuelve `FALSE` y tampoco nombra la tabla. Reventaba justo para
-    // quien SÍ tiene sucursal: Junior y Arais no podían editar ni un activo.
+    // quien SÍ tiene sucursal: ninguna cuenta con sucursal podía editar un activo.
     const prev = await db.getPool().query(
       `SELECT a.id, a.ubicacion_id, a.custodio_id, a.estado FROM activos a WHERE a.id = $1 AND a.tipo = $2${condPrev ? ` AND ${condPrev}` : ''}`,
       paramsPrev
@@ -570,8 +570,8 @@ async function deleteActivo(req, res, next) {
  * vacío, así que la pantalla parecía correcta; los nombres viajaban igual en la
  * respuesta del catálogo.
  *
- * Un dato que no se pinta no es un dato que no se manda. Lo encontró Jose el 30/09/2026
- * con «todo el mundo va a ver Camagüey», y tenía razón: no en el inventario, aquí.
+ * Un dato que no se pinta no es un dato que no se manda. Lo encontraron el 30/09/2026
+ * con «todo el mundo va a ver Camagüey», y tenían razón: no en el inventario, aquí.
  *
  * Lo que se puede recortar HOY es `responsablesPorArea`, que sale de `activos` y por
  * tanto tiene sucursal. Las áreas, ubicaciones, responsables, marcas y categorías **no
