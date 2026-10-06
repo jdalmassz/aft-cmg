@@ -6,3 +6,4 @@ dist/
 backend/data/*.db
 backend/data/*.db-journal
 *.sql.bak*.pid
+backend/src/data/
