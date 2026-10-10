@@ -413,7 +413,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div>
+  <div class="pantalla">
     <div class="head">
       <div>
         <h2>Útiles y herramientas</h2>
@@ -526,7 +526,7 @@ onMounted(() => {
             <div class="field"><label>Cantidad</label><input v-model="formulario.cantidad" class="input" type="number" min="1" /></div>
           </div>
           <div class="dos">
-            <div class="field"><label>Marca</label><input v-model="formulario.marca" class="input" placeholder="Se escribe" /></div>
+            <div class="field"><label>Marca</label><input v-model="formulario.marca" class="input" /></div>
             <div class="field"><label>Modelo</label><input v-model="formulario.modelo" class="input" /></div>
           </div>
           <div class="dos">
@@ -583,7 +583,7 @@ onMounted(() => {
           <div class="field"><label>Cantidad</label><input v-model="formulario.cantidad" class="input" type="number" min="1" /></div>
         </div>
         <div class="dos">
-          <div class="field"><label>Marca</label><input v-model="formulario.marca" class="input" placeholder="Se escribe" /></div>
+          <div class="field"><label>Marca</label><input v-model="formulario.marca" class="input" /></div>
           <div class="field"><label>Modelo</label><input v-model="formulario.modelo" class="input" /></div>
         </div>
         <div class="dos">
@@ -668,13 +668,34 @@ onMounted(() => {
 .vacio { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 60px 20px; color: var(--muted); text-align: center; }
 .vacio svg { color: #c4cbd8; }
 
+/*
+ * LA TABLA OCUPA TODO LO QUE SOBRA HACIA ABAJO.
+ *
+ * Antes el recuadro sólo tenía un `max-height: calc(100vh - 280px)`: se quedaba
+ * tan alto como sus filas. Con pocas filas quedaba un hueco sin aprovechar
+ * debajo de la tabla y, con muchas, había que hacer scroll de la PÁGINA para
+ * llegar a la paginación. Ahora la pantalla es una columna que ocupa la ventana
+ * entera, la tabla crece hasta el pie y el scroll es sólo suyo (con la cabecera
+ * pegada arriba, que ya lo hacía).
+ *
+ * Si el contenido (título + filtros + filas) no cabe, la columna se estira y la
+ * página scrollea como siempre: el `flex` sólo reparte el hueco que sobra.
+ */
+.pantalla { display: flex; flex-direction: column; min-height: calc(100vh - 2 * var(--py, 24px)); }
+.pantalla .head,
+.pantalla .filtros,
+.pantalla .chips,
+.pantalla .paginacion,
+.pantalla .center,
+.pantalla .err,
+.pantalla .vacio { flex: 0 0 auto; }
+.pantalla .table-wrap { flex: 1 1 auto; min-height: 200px; max-height: none; overflow: auto; }
 .paginacion { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
 .pag-lbl { font-size: 12px; color: var(--muted); font-weight: 600; }
 .pag-size { width: 80px; }
 .pg-info { flex: 1; font-size: 12px; color: var(--muted); }
 .pg-btns { display: flex; gap: 6px; }
 
-.table-wrap { max-height: calc(100vh - 280px); overflow: auto; }
 table.tbl thead th { position: sticky; top: 0; z-index: 2; }
 table.tbl tbody tr { cursor: pointer; }
 table.tbl tr.fila-act td { background: #eef4ff; }
