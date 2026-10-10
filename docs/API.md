@@ -207,12 +207,20 @@ Cuerpo (solo `descripcion` es obligatorio):
 ```
 Devuelve el activo creado con `201`.
 
+**La marca se escribe, no se elige**: además de `marca_id` se puede mandar
+`marca` como **texto** (`"marca": "TP LINK"`), y entonces manda sobre el id. El
+servidor la busca en `marcas` sin distinguir mayúsculas ni espacios (`" epson "`
+y `"EPSON"` son la misma) y, si no está, la crea. Vacío o `null` borra la marca.
+Existe porque no hay un listado de marcas de útiles: el del desplegable viene del
+Excel de activos fijos.
+
 `sucursal_id` se **fuerza al de la propia sucursal** si el usuario no es de los
 roles globales; si su sucursal no tiene datos en el sistema → `403`.
 
 ### `PUT /api/activos/:id`
 
-Actualiza solo los campos presentes en el cuerpo.
+Actualiza solo los campos presentes en el cuerpo. `marca` (texto) funciona igual
+que en el alta y manda sobre `marca_id`.
 
 Un usuario de una sucursal no puede mover el activo a otra (`403`), ni ver ni
 editar activos de otra sucursal (`404`).

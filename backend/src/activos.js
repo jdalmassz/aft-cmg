@@ -99,8 +99,14 @@ const EXPORT_COLS = [
 /**
  * Las de un útil: sin ubicación —no tiene— y CON cantidad, que es lo que se cuenta.
  *
- * El resto se deja en el mismo orden que el original de activos fijos a propósito: quien
- * revisa las dos hojas el mismo día no tiene que aprenderse dos sitios para cada dato.
+ * El resto se deja en el mismo orden que el original de activos fijos a propósito:
+ * quien revisa las dos hojas el mismo día no tiene que aprenderse dos sitios para
+ * cada dato. La única diferencia de sitio es el área, que ocupa el hueco que en la
+ * otra hoja lleva la ubicación.
+ *
+ * Un útil no tiene columna de área (ver schema.sql): la suya vive en la primera
+ * línea de `comentarios` —«Área: ECONOMIA»—, y de ahí sale para esta columna,
+ * dejando en Comentarios sólo lo que la persona escribió de verdad.
  */
 const EXPORT_COLS_UTIL = [
   { header: 'Codigo', key: 'codigo', width: undefined },
@@ -112,10 +118,26 @@ const EXPORT_COLS_UTIL = [
   { header: 'Categoria', key: 'categoria', width: 3.109375, hidden: true },
   { header: 'Sucursal', key: 'sucursal', width: 13.109375 },
   { header: 'Fecha de Adquisicion', key: 'fecha_adquisicion', width: 20.5546875, numFmt: FECHA_FMT },
+  { header: 'Área', key: 'area', width: 16.88671875 },
   { header: 'Responsable', key: 'custodio', width: 35.33203125 },
   { header: 'Valor USD', key: 'valor_usd', width: 25.77734375, numFmt: MONEY_FMT },
   { header: 'Comentarios', key: 'comentarios', width: 34.88671875 }
 ];
+
+/*
+ * El área del útil vive en la PRIMERA LÍNEA de `comentarios`. El frontend la
+ * separa con el mismo prefijo (`PREFIJO_AREA` en UtilesView.vue): si cambia uno,
+ * cambian las dos mitades.
+ */
+const PREFIJO_AREA = 'Área: ';
+const areaDe = (comentarios) => {
+  const [primera = ''] = String(comentarios ?? '').split('\n');
+  return primera.startsWith(PREFIJO_AREA) ? primera.slice(PREFIJO_AREA.length).trim() : '';
+};
+const sinArea = (comentarios) => {
+  const lineas = String(comentarios ?? '').split('\n');
+  return lineas[0]?.startsWith(PREFIJO_AREA) ? lineas.slice(1).join('\n').trim() : (comentarios || '').trim() || null;
+};
 
 const columnasDe = (util) => (util ? EXPORT_COLS_UTIL : EXPORT_COLS);
 
@@ -137,10 +159,13 @@ const valoresFila = (a, util) => [
   a.categoria ?? null,
   a.sucursal ?? null,
   a.fecha_adquisicion ?? null,
-  ...(util ? [] : [a.ubicacion ? a.ubicacion.replace(/\s*\d+$/, '') : null]),
+  // La ubicación del activo fijo y el área del útil van en el mismo hueco.
+  util
+    ? (areaDe(a.comentarios) || null)
+    : (a.ubicacion ? a.ubicacion.replace(/\s*\d+$/, '') : null),
   a.custodio ?? null,
   a.valor_usd == null ? null : Number(a.valor_usd),
-  a.comentarios ?? null
+  util ? sinArea(a.comentarios) : (a.comentarios ?? null)
 ];
 
 function writeActivosSheet(wb, activos, { hoja, tabla = 'Tabla1', util = false } = {}) {
