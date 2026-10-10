@@ -2,13 +2,20 @@
 /**
  * ÚTILES Y HERRAMIENTAS — lo que tiene cada responsable.
  *
- * Un activo fijo está en un sitio: su área, y alguien responde por él.
- * Un útil va CON la persona —se lo lleva a su casa si hace falta— y por eso aquí no hay
- * área: la pregunta es siempre «¿quién lo tiene?».
+ * Un activo fijo está EN un sitio: tiene ubicación, y de ahí sale su área.
+ * Un útil va CON la persona —se lo lleva a su casa si hace falta— y por eso no tiene
+ * ubicación: la pregunta es siempre «¿quién lo tiene?». Pero sale de un área
+ * concreta (ECONOMIA, LOGISTICA…) y quien revisa la hoja la necesita ver, así que
+ * va guardada en la primera línea de `comentarios` («Área: ECONOMIA») y de ahí la
+ * pinta esta pantalla. No hay columna `area_id`: un útil no está EN un sitio.
  *
- * Es la misma pantalla que el inventario menos las dos columnas que no existen y más
- * una, la cantidad: de un martillo hay uno, de los destornilladores hay diez y contarlos
- * de uno en uno sería inventarles diez códigos.
+ * La marca TAMBIÉN se escribe: no hay un listado de marcas de útiles (el de la
+ * tabla `marcas` viene del Excel de activos fijos y no sirve para taladros y
+ * carretillas). El servidor la guarda creándola si hace falta.
+ *
+ * Es la misma pantalla que el inventario menos una columna y más la cantidad: de un
+ * martillo hay uno, de los destornilladores hay diez y contarlos de uno en uno
+ * sería inventarles diez códigos.
  */
 import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { api, formatMoneda, getUser } from '../api'
@@ -62,6 +69,22 @@ const ESTADOS = ['ACTIVO', 'BAJA']
 
 const nome = (lista, id) => lista.find((x) => x.id === Number(id))?.nombre || ''
 
+/*
+ * El área del útil vive en la PRIMERA LÍNEA de `comentarios` («Área: ECONOMIA»).
+ * No es un capricho de formato: es lo único que hay donde guardarla sin darle a un
+ * útil una ubicación, que es lo que sí estaría mal (ver el bloque de arriba).
+ *
+ * Así que se separa al leer y se vuelve a juntar al guardar, y lo que haya escrito
+ * debajo del área se conserva tal cual.
+ */
+const PREFIJO_AREA = 'Área: '
+const lineas = (texto) => (texto || '').split('\n')
+const esArea = (l) => typeof l === 'string' && l.startsWith(PREFIJO_AREA)
+const areaDe = (texto) => { const l = lineas(texto)[0]; return esArea(l) ? l.slice(PREFIJO_AREA.length).trim() : '' }
+const sinArea = (texto) => { const l = lineas(texto); return esArea(l[0]) ? l.slice(1).join('\n').trim() : (texto || '').trim() }
+const juntarArea = (area, resto) =>
+  [area && area.trim() ? PREFIJO_AREA + area.trim() : '', (resto || '').trim()].filter(Boolean).join('\n')
+
 const chips = computed(() => {
   const f = filtrosAplicados.value
   const out = []
@@ -74,9 +97,10 @@ const chips = computed(() => {
 
 function emptyForm() {
   return {
-    codigo: '', descripcion: '', marca_id: '', modelo: '', cantidad: 1,
+    codigo: '', descripcion: '', marca: '', modelo: '', cantidad: 1,
     valor_cup: '', valor_usd: '', categoria_id: '', sucursal_id: 1,
-    fecha_adquisicion: '', fecha_cruda: '', custodio_id: '', estado: 'ACTIVO', comentarios: ''
+    fecha_adquisicion: '', fecha_cruda: '', custodio_id: '', estado: 'ACTIVO',
+    area: '', comentarios: ''
   }
 }
 
@@ -173,13 +197,14 @@ function editarDrawer() {
   // conserva cruda aparte para no perderla al guardar.
   const iso = aIso(u.fecha_adquisicion)
   formulario.value = {
-    codigo: u.codigo || '', descripcion: u.descripcion, marca_id: u.marca_id || '',
+    codigo: u.codigo || '', descripcion: u.descripcion, marca: u.marca || '',
     modelo: u.modelo || '', cantidad: u.cantidad ?? 1,
     valor_cup: u.valor_cup ?? '', valor_usd: u.valor_usd ?? '',
     categoria_id: u.categoria_id || '', sucursal_id: u.sucursal_id || 1,
     fecha_adquisicion: iso, fecha_cruda: iso ? '' : (u.fecha_adquisicion || ''),
     custodio_id: u.custodio_id || '',
-    estado: u.estado || 'ACTIVO', comentarios: u.comentarios || ''
+    estado: u.estado || 'ACTIVO',
+    area: areaDe(u.comentarios), comentarios: sinArea(u.comentarios)
   }
   editDrawer.value = true
 }
@@ -189,7 +214,7 @@ async function guardar() {
   errores.value = ''
   try {
     const body = { ...formulario.value }
-    for (const k of ['marca_id', 'categoria_id', 'sucursal_id', 'custodio_id']) {
+    for (const k of ['categoria_id', 'sucursal_id', 'custodio_id']) {
       body[k] = body[k] ? Number(body[k]) : null
     }
     for (const k of ['valor_cup', 'valor_usd']) {
@@ -202,6 +227,11 @@ async function guardar() {
       ? aTexto(body.fecha_adquisicion)
       : (body.fecha_cruda || null)
     delete body.fecha_cruda
+    // El área no tiene columna propia: se escribe arriba del todo en `comentarios`.
+    body.comentarios = juntarArea(body.area, body.comentarios) || null
+    delete body.area
+    // La marca va como TEXTO: el servidor la busca y la crea si hace falta.
+    body.marca = (body.marca || '').trim() || null
     const id = mostrar.value ? null : utilSel.value?.id
     if (id) {
       await api.put(`/api/utiles/${id}`, body)
@@ -434,13 +464,14 @@ onMounted(() => {
       <div class="card table-wrap">
         <table class="tbl">
           <thead>
-            <tr><th>Código</th><th>Descripción</th><th>Marca</th><th class="num">Cant.</th><th>Responsable</th><th>Estado</th></tr>
+            <tr><th>Código</th><th>Descripción</th><th>Marca</th><th>Área</th><th class="num">Cant.</th><th>Responsable</th><th>Estado</th></tr>
           </thead>
           <tbody>
             <tr v-for="u in utiles" :key="u.id" :class="{ 'fila-act': utilSel?.id === u.id }" @click="abrirUtil(u)">
               <td><b class="codigo">{{ u.codigo || '—' }}</b></td>
               <td><b>{{ u.descripcion }}</b></td>
               <td>{{ u.marca || '—' }}</td>
+              <td>{{ areaDe(u.comentarios) || '—' }}</td>
               <td class="num">{{ u.cantidad }}</td>
               <td><span :class="{ sinresp: !u.custodio }">{{ u.custodio || 'Sin responsable' }}</span></td>
               <td><span class="badge" :class="u.estado === 'ACTIVO' ? 'ok' : 'warn'">{{ u.estado }}</span></td>
@@ -495,10 +526,13 @@ onMounted(() => {
             <div class="field"><label>Cantidad</label><input v-model="formulario.cantidad" class="input" type="number" min="1" /></div>
           </div>
           <div class="dos">
-            <div class="field"><label>Marca</label><select v-model="formulario.marca_id" class="select"><option value="">—</option><option v-for="m in catalogo.marcas" :key="m.id" :value="m.id">{{ m.nombre }}</option></select></div>
+            <div class="field"><label>Marca</label><input v-model="formulario.marca" class="input" placeholder="Se escribe" /></div>
             <div class="field"><label>Modelo</label><input v-model="formulario.modelo" class="input" /></div>
           </div>
-          <div class="field"><label>Responsable</label><select v-model="formulario.custodio_id" class="select"><option value="">Sin responsable</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select></div>
+          <div class="dos">
+            <div class="field"><label>Área</label><input v-model="formulario.area" class="input" placeholder="ECONOMIA, LOGISTICA…" /></div>
+            <div class="field"><label>Responsable</label><select v-model="formulario.custodio_id" class="select"><option value="">Sin responsable</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select></div>
+          </div>
           <div class="field"><label>Categoría</label><select v-model="formulario.categoria_id" class="select"><option value="">—</option><option v-for="c in catalogo.categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option></select></div>
           <div class="dos">
             <div class="field"><label>Valor CUP</label><input v-model="formulario.valor_cup" class="input" type="number" step="0.01" /></div>
@@ -512,6 +546,7 @@ onMounted(() => {
         </div>
 
         <div v-else class="det-grid">
+          <div class="det"><span>Área</span><b>{{ areaDe(utilSel.comentarios) || '—' }}</b></div>
           <div class="det"><span>Responsable</span><b>{{ utilSel.custodio || 'Sin responsable' }}</b></div>
           <div class="det"><span>Cantidad</span><b>{{ utilSel.cantidad }}</b></div>
           <div class="det"><span>Marca</span><b>{{ utilSel.marca || '—' }}</b></div>
@@ -521,7 +556,7 @@ onMounted(() => {
           <div class="det"><span>Valor CUP</span><b>{{ utilSel.valor_cup == null ? '—' : formatMoneda(utilSel.valor_cup) }}</b></div>
           <div class="det"><span>Valor USD</span><b>{{ utilSel.valor_usd == null ? '—' : formatMoneda(utilSel.valor_usd) }}</b></div>
           <div class="det"><span>Adquisición</span><b>{{ utilSel.fecha_adquisicion || '—' }}</b></div>
-          <div class="det wide" v-if="utilSel.comentarios"><span>Comentarios</span><b>{{ utilSel.comentarios }}</b></div>
+          <div class="det wide" v-if="sinArea(utilSel.comentarios)"><span>Comentarios</span><b>{{ sinArea(utilSel.comentarios) }}</b></div>
         </div>
       </template>
 
@@ -548,10 +583,13 @@ onMounted(() => {
           <div class="field"><label>Cantidad</label><input v-model="formulario.cantidad" class="input" type="number" min="1" /></div>
         </div>
         <div class="dos">
-          <div class="field"><label>Marca</label><select v-model="formulario.marca_id" class="select"><option value="">—</option><option v-for="m in catalogo.marcas" :key="m.id" :value="m.id">{{ m.nombre }}</option></select></div>
+          <div class="field"><label>Marca</label><input v-model="formulario.marca" class="input" placeholder="Se escribe" /></div>
           <div class="field"><label>Modelo</label><input v-model="formulario.modelo" class="input" /></div>
         </div>
-        <div class="field"><label>Responsable</label><select v-model="formulario.custodio_id" class="select"><option value="">Sin responsable</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select></div>
+        <div class="dos">
+          <div class="field"><label>Área</label><input v-model="formulario.area" class="input" placeholder="ECONOMIA, LOGISTICA…" /></div>
+          <div class="field"><label>Responsable</label><select v-model="formulario.custodio_id" class="select"><option value="">Sin responsable</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select></div>
+        </div>
         <div class="field"><label>Categoría</label><select v-model="formulario.categoria_id" class="select"><option value="">—</option><option v-for="c in catalogo.categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option></select></div>
         <div class="dos">
           <div class="field"><label>Valor CUP</label><input v-model="formulario.valor_cup" class="input" type="number" step="0.01" /></div>
@@ -563,7 +601,7 @@ onMounted(() => {
         </div>
         <div class="field"><label>Comentarios</label><textarea v-model="formulario.comentarios" class="input" rows="3"></textarea></div>
       </div>
-      <p class="muted nota">Un útil no lleva área: va con su responsable.</p>
+      <p class="muted nota">El área es la de la que sale el útil; el responsable es quien lo tiene.</p>
       <template #pie>
         <button class="btn sec" @click="mostrar = false">Cancelar</button>
         <button class="btn" :disabled="guardando || !formulario.descripcion" @click="guardar">{{ guardando ? 'Guardando…' : 'Registrar' }}</button>

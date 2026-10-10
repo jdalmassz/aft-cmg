@@ -386,6 +386,35 @@ async function crearUbicacion(pool, nombre, areaId) {
   return { id: r.rows[0].id, creada: true };
 }
 
+/**
+ * LA MARCA SE ESCRIBE, NO SE ELIGE.
+ *
+ * El desplegable de marcas venía del Excel de activos fijos, y sirve para él: allí
+ * hay una lista cerrada (EPSON, ACER, MILEXUS…). Para los útiles no existe esa
+ * lista —taladros, carretillas y routers— y obligar a elegir de un desplegable
+ * ajeno es obligar a dejar la marca en blanco o a apuntarla mal.
+ *
+ * Así que el cuerpo puede mandar `marca` como TEXTO: se busca sin distinguir
+ * mayúsculas ni espacios («epson» y «EPSON  » son la misma) y, si no está, se
+ * crea. La columna sigue siendo `marca_id`; esto sólo resuelve el nombre.
+ * Devuelve `null` para vacío, que borra la marca.
+ */
+async function resolverMarca(pool, texto) {
+  const nombre = String(texto ?? '').replace(/\s+/g, ' ').trim();
+  if (!nombre) return null;
+  const buscar = 'SELECT id FROM marcas WHERE upper(nombre) = upper($1) LIMIT 1';
+  const ya = await pool.query(buscar, [nombre]);
+  if (ya.rowCount) return ya.rows[0].id;
+  // Otra persona pudo haberla creado entre la búsqueda y el alta: no revienta.
+  const nueva = await pool.query(
+    'INSERT INTO marcas (nombre) VALUES ($1) ON CONFLICT DO NOTHING RETURNING id',
+    [nombre]
+  );
+  if (nueva.rowCount) return nueva.rows[0].id;
+  const otra = await pool.query(buscar, [nombre]);
+  return otra.rows[0]?.id ?? null;
+}
+
 async function createActivo(req, res, next) {
   try {
     const b = req.body;
@@ -414,6 +443,8 @@ async function createActivo(req, res, next) {
     // Cada sucursal sólo escribe en la suya: el resto no puede colar un
     // activo en otra sucursal mandando sucursal_id en el cuerpo.
     if (!alc.todas) values[keys.indexOf('sucursal_id')] = alc.id;
+    // La marca llega como TEXTO y manda sobre `marca_id` (ver `resolverMarca`).
+    if ('marca' in b) values[keys.indexOf('marca_id')] = await resolverMarca(db.getPool(), b.marca);
     const r = await db.getPool().query(
       `INSERT INTO activos (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING id`,
       values
@@ -505,6 +536,9 @@ async function updateActivo(req, res, next) {
         }
       }
     }
+
+    // La marca llega como TEXTO y manda sobre `marca_id` (ver `resolverMarca`).
+    if ('marca' in b) b.marca_id = await resolverMarca(db.getPool(), b.marca);
 
     const sets = [];
     const params = [];
