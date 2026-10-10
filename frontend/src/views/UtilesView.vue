@@ -35,6 +35,7 @@ const errores = ref('')
 
 const q = ref('')
 const fCategoria = ref('')
+const fArea = ref('')
 const fResponsable = ref('')
 const fEstado = ref('')
 
@@ -65,6 +66,15 @@ const cargandoMov = ref(false)
 const user = computed(() => getUser())
 const esAdmin = computed(() => user.value?.rol === 'admin')
 
+// Mismo conmutador que en Inventario — y la misma llave de la navegación: si lo
+// dejas apretado en una pantalla, lo está en la otra. Sirve para meter más
+// filas en la ventana sin tener que hacer scroll.
+const filasCompactas = ref(localStorage.getItem('aft_compact') === '1')
+function toggleCompacto() {
+  filasCompactas.value = !filasCompactas.value
+  localStorage.setItem('aft_compact', filasCompactas.value ? '1' : '0')
+}
+
 const ESTADOS = ['ACTIVO', 'BAJA']
 
 const nome = (lista, id) => lista.find((x) => x.id === Number(id))?.nombre || ''
@@ -85,11 +95,18 @@ const sinArea = (texto) => { const l = lineas(texto); return esArea(l[0]) ? l.sl
 const juntarArea = (area, resto) =>
   [area && area.trim() ? PREFIJO_AREA + area.trim() : '', (resto || '').trim()].filter(Boolean).join('\n')
 
+/**
+ * Etiqueta del área para el filtro: «Área 3 - ALMACEN». Ojo: aquí `areaDe`
+ * (abajo) es el que saca el área de `comentarios`, que es otra cosa.
+ */
+const etiquetaArea = (id) => catalogo.value.areas.find((x) => x.id === Number(id))?.etiqueta || ''
+
 const chips = computed(() => {
   const f = filtrosAplicados.value
   const out = []
   if (f.q) out.push({ k: 'q', texto: `«${f.q}»` })
   if (f.categoria) out.push({ k: 'categoria', texto: nome(catalogo.value.categorias, f.categoria) })
+  if (f.area) out.push({ k: 'area', texto: etiquetaArea(f.area) })
   if (f.custodio) out.push({ k: 'custodio', texto: nome(catalogo.value.custodios, f.custodio) })
   if (f.estado) out.push({ k: 'estado', texto: f.estado })
   return out
@@ -126,6 +143,7 @@ function filtrosQuery() {
   const params = new URLSearchParams()
   if (f.q) params.set('q', f.q)
   if (f.categoria) params.set('categoria', f.categoria)
+  if (f.area) params.set('area', f.area)
   if (f.custodio) params.set('custodio', f.custodio)
   if (f.estado) params.set('estado', f.estado)
   return params
@@ -156,17 +174,56 @@ let tBusqueda = null
 function aplicar() {
   clearTimeout(tBusqueda)
   pagina.value = 1
-  filtrosAplicados.value = { q: q.value.trim(), categoria: fCategoria.value, custodio: fResponsable.value, estado: fEstado.value }
+  filtrosAplicados.value = { q: q.value.trim(), categoria: fCategoria.value, area: fArea.value, custodio: fResponsable.value, estado: fEstado.value }
   cargar()
+}
+
+// ── Sugerencias mientras se escribe ──
+// Igual que en Inventario: no es una petición aparte, son las primeras filas de
+// la MISMA lista ya cargada, así que no cuesta ni una ida extra a la red. Sólo
+// se enseñan cuando la lista ya corresponde al texto escrito (mientras carga no
+// se pinta nada, para no sugerir filas de otra búsqueda).
+const sugAbierta = ref(false)
+const sugActiva = ref(-1)
+const textoQ = computed(() => q.value.trim())
+const listaAlDia = () =>
+  !loading.value && !errores.value && textoQ.value.length >= 2 && (filtrosAplicados.value.q || '') === textoQ.value
+const sugerencias = computed(() => (sugAbierta.value && listaAlDia() ? utiles.value.slice(0, 8) : []))
+
+function enfocarBusqueda() {
+  sugAbierta.value = listaAlDia()
+}
+function cerrarSugerencias() {
+  sugAbierta.value = false
+  sugActiva.value = -1
+}
+function moverSug(d) {
+  if (!sugerencias.value.length) { sugAbierta.value = listaAlDia(); return }
+  const n = sugerencias.value.length
+  sugActiva.value = ((sugActiva.value + d) % n + n) % n
+}
+function elegirSug(u) {
+  cerrarSugerencias()
+  abrirUtil(u)
+}
+function teclaEnter() {
+  const u = sugAbierta.value && sugActiva.value >= 0 ? sugerencias.value[sugActiva.value] : null
+  if (u) return elegirSug(u)
+  cerrarSugerencias()
+  aplicar()
 }
 
 watch(q, () => {
   clearTimeout(tBusqueda)
   tBusqueda = setTimeout(aplicar, 350)
+  // Mientras se teclea, la lista de sugerencias va abierta (se vacía sola si la
+  // lista todavía no corresponde al texto y vuelve al cargar).
+  sugAbierta.value = textoQ.value.length >= 2
+  sugActiva.value = -1
 })
 
 function limpiar() {
-  q.value = ''; fCategoria.value = ''; fResponsable.value = ''; fEstado.value = ''
+  q.value = ''; fCategoria.value = ''; fArea.value = ''; fResponsable.value = ''; fEstado.value = ''
   filtrosAplicados.value = {}
   if (pagina.value !== 1) pagina.value = 1
   cargar()
@@ -175,6 +232,7 @@ function limpiar() {
 function quitarChip(k) {
   if (k === 'q') q.value = ''
   if (k === 'categoria') fCategoria.value = ''
+  if (k === 'area') fArea.value = ''
   if (k === 'custodio') fResponsable.value = ''
   if (k === 'estado') fEstado.value = ''
   aplicar()
@@ -430,13 +488,14 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="pantalla">
+  <div>
     <div class="head">
       <div>
         <h2>Útiles y herramientas</h2>
         <p class="muted">{{ total }} registro(s) — lo que tiene cada responsable · <span class="hint">toca una fila para ver el detalle</span></p>
       </div>
       <span class="btns">
+        <button class="btn sec sm" :class="{ on: filasCompactas }" @click="toggleCompacto" :title="filasCompactas ? 'Filas normales' : 'Filas compactas (ver más registros)'"><AppIcon name="rows" :size="15" /> <span class="hbt">Compacto</span></button>
         <span class="menu">
           <button class="btn sec sm" :aria-expanded="menuExcel" title="Listado entero: imprimir o bajarlo en Excel" @click="menuExcel = !menuExcel"><AppIcon name="file" :size="15" /> Excel <AppIcon name="chevron-down" :size="13" /></button>
           <div v-if="menuExcel" class="menu-fondo" @click="menuExcel = false"></div>
@@ -451,8 +510,24 @@ onMounted(() => {
     </div>
 
     <div class="card filtros">
-      <input v-model="q" class="input" placeholder="Buscar por descripción, modelo, código…" @keyup.enter="aplicar" />
+      <span class="buscador">
+        <input v-model="q" class="input" placeholder="Buscar por descripción, modelo, código…"
+               @focus="enfocarBusqueda" @blur="cerrarSugerencias"
+               @keydown.enter.prevent="teclaEnter"
+               @keydown.down.prevent="moverSug(1)" @keydown.up.prevent="moverSug(-1)"
+               @keydown.esc="cerrarSugerencias" />
+        <span v-if="sugerencias.length" class="sug-lista">
+          <button v-for="(u, i) in sugerencias" :key="u.id" type="button" class="sug-op"
+                  :class="{ on: i === sugActiva }"
+                  @mousedown.prevent="elegirSug(u)" @mouseenter="sugActiva = i">
+            <b>{{ u.codigo || 'ID ' + u.id }}</b>
+            <span class="sug-desc">{{ u.descripcion }}</span>
+            <span class="badge" :class="u.estado === 'ACTIVO' ? 'ok' : 'warn'">{{ u.estado }}</span>
+          </button>
+        </span>
+      </span>
       <select v-model="fCategoria" class="select" @change="aplicar"><option value="">Categoría</option><option v-for="c in catalogo.categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
+      <select v-model="fArea" class="select" @change="aplicar"><option value="">Área</option><option v-for="a in catalogo.areas" :key="a.id" :value="a.id">{{ a.etiqueta }}</option></select>
       <select v-model="fResponsable" class="select" @change="aplicar"><option value="">Responsable</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
       <select v-model="fEstado" class="select" @change="aplicar"><option value="">Estado</option><option v-for="e in ESTADOS" :key="e" :value="e">{{ e }}</option></select>
       <span class="btns">
@@ -479,7 +554,7 @@ onMounted(() => {
 
     <template v-else>
       <div class="card table-wrap">
-        <table class="tbl">
+        <table class="tbl" :class="{ compact: filasCompactas }">
           <thead>
             <tr><th>Código</th><th>Descripción</th><th>Marca</th><th>Área</th><th class="num">Cant.</th><th>Responsable</th><th>Estado</th></tr>
           </thead>
@@ -671,7 +746,22 @@ onMounted(() => {
 .sinresp { color: var(--muted); font-style: italic; }
 
 .filtros { display: flex; gap: 10px; padding: 12px; margin-bottom: 10px; flex-wrap: wrap; }
-.filtros .input { flex: 1 1 220px; }
+.filtros .buscador { position: relative; flex: 1 1 220px; }
+.filtros .buscador .input { width: 100%; }
+.sug-lista {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 40;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow-lg);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.sug-op {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  padding: 8px 10px; background: none; border: none; cursor: pointer;
+  font-size: 13px; color: var(--text);
+}
+.sug-op.on, .sug-op:hover { background: #eef4ff; }
+.sug-op b { flex: 0 0 auto; }
+.sug-desc { flex: 1; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .filtros .select { flex: 0 1 200px; }
 .filtros .btns { display: flex; gap: 6px; align-items: center; }
 
@@ -691,27 +781,12 @@ onMounted(() => {
 .vacio svg { color: #c4cbd8; }
 
 /*
- * LA TABLA OCUPA TODO LO QUE SOBRA HACIA ABAJO.
- *
- * Antes el recuadro sólo tenía un `max-height: calc(100vh - 280px)`: se quedaba
- * tan alto como sus filas. Con pocas filas quedaba un hueco sin aprovechar
- * debajo de la tabla y, con muchas, había que hacer scroll de la PÁGINA para
- * llegar a la paginación. Ahora la pantalla es una columna que ocupa la ventana
- * entera, la tabla crece hasta el pie y el scroll es sólo suyo (con la cabecera
- * pegada arriba, que ya lo hacía).
- *
- * Si el contenido (título + filtros + filas) no cabe, la columna se estira y la
- * página scrollea como siempre: el `flex` sólo reparte el hueco que sobra.
+ * La tabla crece hasta la ventana y el scroll es sólo suyo: la cabecera se
+ * queda pegada arriba y no hay que bajar toda la página para llegar a la
+ * paginación. El corte (280px) es el mismo que en Inventario, para que las dos
+ * pantallas midan igual.
  */
-.pantalla { display: flex; flex-direction: column; min-height: calc(100vh - 2 * var(--py, 24px)); }
-.pantalla .head,
-.pantalla .filtros,
-.pantalla .chips,
-.pantalla .paginacion,
-.pantalla .center,
-.pantalla .err,
-.pantalla .vacio { flex: 0 0 auto; }
-.pantalla .table-wrap { flex: 1 1 auto; min-height: 200px; max-height: none; overflow: auto; }
+.table-wrap { max-height: calc(100vh - 280px); overflow: auto; }
 .paginacion { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
 .pag-lbl { font-size: 12px; color: var(--muted); font-weight: 600; }
 .pag-size { width: 80px; }
@@ -721,7 +796,10 @@ onMounted(() => {
 table.tbl thead th { position: sticky; top: 0; z-index: 2; }
 table.tbl tbody tr { cursor: pointer; }
 table.tbl tr.fila-act td { background: #eef4ff; }
+table.tbl.compact th, table.tbl.compact td { padding: 5px 9px; font-size: 12.5px; }
 table.tbl .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.btn.on { background: #e0ecff; border-color: var(--primary); color: var(--primary-dark); }
 
 .back { background: none; border: none; cursor: pointer; color: var(--muted); padding: 4px; border-radius: 6px; display: flex; flex-shrink: 0; }
 .back:hover { color: var(--primary); background: #eef4ff; }
@@ -764,4 +842,8 @@ table.tbl .num { text-align: right; font-variant-numeric: tabular-nums; }
 .hist { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
 .hist li { display: flex; flex-direction: column; gap: 2px; border-left: 2px solid #c9dcff; padding-left: 10px; }
 .hist .muted { font-size: 11.5px; margin: 0; }
+
+@media (max-width: 640px) {
+  .hbt { display: none; }
+}
 </style>

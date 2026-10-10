@@ -136,8 +136,12 @@ los activos.
 ### `GET /api/activos`
 
 Filtros por query string (todos opcionales):
-`q` (texto libre), `categoria`, `ubicacion`, `custodio`, `marca`, `estado`,
+`q` (texto libre), `categoria`, `area`, `ubicacion`, `custodio`, `marca`, `estado`,
 `limite` (default 200), `offset`.
+
+`area` va con el **id** del área. En el inventario se compara contra la
+ubicación; en los útiles (`/api/utiles`), que no tienen ubicación, contra el
+nombre del área que llevan escrito en la primera línea de `comentarios`.
 
 ```json
 { "total": 57, "activos": [ { "id": 1, "descripcion": "...", "codigo": null,

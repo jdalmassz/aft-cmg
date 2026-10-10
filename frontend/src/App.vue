@@ -177,13 +177,12 @@ nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
 .tb-title { font-weight: 800; font-size: 15px; }
 .backdrop { position: fixed; inset: 0; background: rgba(15,23,42,0.5); z-index: 650; }
 /*
- * `--px` y `--py` son el aire a los lados y arriba/abajo de TODO el contenido.
- * La tabla es la que más se lleva del ancho, así que se sale de `--px` y llega
- * de borde a borde de la ventana (el lateral de navegación sigue comiéndose lo
- * suyo, que es otra cosa). El resto de bloques —título, filtros, chips,
- * paginación— se quedan a su sitio.
+ * `--px` es el aire a los lados de TODO el contenido. La tabla es la que más se
+ * lleva del ancho, así que se sale de ese aire y llega de borde a borde de la
+ * ventana (el lateral de navegación sigue comiéndose lo suyo, que es otra cosa).
+ * El resto de bloques —título, filtros, chips, paginación— se quedan a su sitio.
  */
-.content { flex: 1; --px: 28px; --py: 24px; padding: var(--py) var(--px); overflow-x: hidden; }
+.content { flex: 1; --px: 28px; padding: 24px var(--px); overflow-x: hidden; }
 .content .card.table-wrap {
   margin-inline: calc(-1 * var(--px));
   border-left: 0; border-right: 0;
@@ -207,6 +206,6 @@ nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
   .side.open { transform: translateX(0); box-shadow: 0 0 40px rgba(0,0,0,0.35); }
   .topbar { display: flex; }
   .main { width: 100%; }
-  .content { --px: 16px; --py: 16px; padding: var(--py) var(--px); }
+  .content { --px: 16px; padding: 16px var(--px); }
 }
 </style>

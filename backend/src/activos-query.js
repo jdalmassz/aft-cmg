@@ -61,7 +61,16 @@ function buildWhere({ q, categoria, area, ubicacion, custodio, marca, estado, ti
     where.push(`(a.descripcion ILIKE ${p('%' + q + '%')} OR a.modelo ILIKE ${p('%' + q + '%')} OR a.codigo ILIKE ${p('%' + q + '%')})`);
   }
   if (categoria) where.push(`a.categoria_id = ${p(categoria)}`);
-  if (area) where.push(`u.area_id = ${p(area)}`);
+  if (area) {
+    if (tipo === 'UTIL') {
+      // Un útil no está EN un sitio, así que no hay `u.area_id` que mirar: su
+      // área está escrita en la primera línea de `comentarios` («Área: ALMACEN»)
+      // y hay que compararla con el nombre del área, no con su id.
+      where.push(`split_part(a.comentarios, E'\\n', 1) = 'Área: ' || (SELECT nombre FROM areas WHERE id = ${p(area)})`);
+    } else {
+      where.push(`u.area_id = ${p(area)}`);
+    }
+  }
   if (ubicacion) where.push(`a.ubicacion_id = ${p(ubicacion)}`);
   if (custodio) where.push(`a.custodio_id = ${p(custodio)}`);
   if (marca) where.push(`a.marca_id = ${p(marca)}`);
