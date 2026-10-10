@@ -29,7 +29,7 @@ import { ok, err } from '../toast'
 import { confirmar } from '../confirm'
 
 const utiles = ref([])
-const catalogo = ref({ categorias: [], custodios: [], marcas: [] })
+const catalogo = ref({ categorias: [], custodios: [], marcas: [], areas: [] })
 const loading = ref(true)
 const errores = ref('')
 
@@ -103,6 +103,23 @@ function emptyForm() {
     area: '', comentarios: ''
   }
 }
+
+/**
+ * El área de un útil es la MISMA que la del inventario: las dos salen del mismo
+ * catálogo, así que aquí se elige y no se escribe. Se guarda el nombre
+ * («ECONOMIA») porque el área del útil vive como texto en la primera línea de
+ * `comentarios` — no hay columna `area_id`.
+ */
+const areasOpciones = computed(() => {
+  const base = (catalogo.value.areas || []).filter((a) => a.nombre)
+  const actual = (formulario.value?.area || '').trim()
+  // Si lo guardado no está en el catálogo (área renombrada o tecleada a mano),
+  // se enseña igual en el desplegable en lugar de perderlo en silencio.
+  if (actual && !base.some((a) => a.nombre === actual)) {
+    base.push({ id: -1, nombre: actual, etiqueta: actual })
+  }
+  return base
+})
 
 function filtrosQuery() {
   const f = filtrosAplicados.value
@@ -530,7 +547,7 @@ onMounted(() => {
             <div class="field"><label>Modelo</label><input v-model="formulario.modelo" class="input" /></div>
           </div>
           <div class="dos">
-            <div class="field"><label>Área</label><input v-model="formulario.area" class="input" placeholder="ECONOMIA, LOGISTICA…" /></div>
+            <div class="field"><label>Área</label><select v-model="formulario.area" class="select"><option value="">Sin área</option><option v-for="a in areasOpciones" :key="a.id" :value="a.nombre">{{ a.etiqueta || a.nombre }}</option></select></div>
             <div class="field"><label>Responsable</label><select v-model="formulario.custodio_id" class="select"><option value="">Sin responsable</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select></div>
           </div>
           <div class="field"><label>Categoría</label><select v-model="formulario.categoria_id" class="select"><option value="">—</option><option v-for="c in catalogo.categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option></select></div>
@@ -561,14 +578,19 @@ onMounted(() => {
       </template>
 
       <template #pie>
-        <template v-if="editDrawer">
-          <button class="btn sec" @click="editDrawer = false">Cancelar</button>
-          <button class="btn" :disabled="guardando || !formulario.descripcion" @click="guardar">{{ guardando ? 'Guardando…' : 'Guardar' }}</button>
+        <!-- El mismo pie que en Inventario: mismo orden y mismos colores. -->
+        <template v-if="histDrawer">
+          <button class="btn sec" @click="histDrawer = false"><AppIcon name="arrow-left" :size="15" /> Volver al detalle</button>
+          <button class="btn sec" @click="cerrarDrawer">Cerrar</button>
         </template>
-        <template v-else-if="!histDrawer && utilSel">
+        <template v-else-if="editDrawer">
+          <button class="btn sec" @click="editDrawer = false">Cancelar</button>
+          <button class="btn" :disabled="guardando || !formulario.descripcion" @click="guardar">{{ guardando ? 'Guardando…' : 'Guardar cambios' }}</button>
+        </template>
+        <template v-else-if="utilSel">
           <button class="btn sec" @click="verHistorial"><AppIcon name="clock" :size="15" /> Historial</button>
+          <button class="btn sec" @click="editarDrawer"><AppIcon name="edit" :size="15" /> Editar</button>
           <button v-if="esAdmin" class="btn danger" @click="eliminar(utilSel)"><AppIcon name="trash" :size="15" /> Eliminar</button>
-          <button class="btn" @click="editarDrawer"><AppIcon name="edit" :size="15" /> Editar</button>
         </template>
       </template>
     </Drawer>
@@ -587,7 +609,7 @@ onMounted(() => {
           <div class="field"><label>Modelo</label><input v-model="formulario.modelo" class="input" /></div>
         </div>
         <div class="dos">
-          <div class="field"><label>Área</label><input v-model="formulario.area" class="input" placeholder="ECONOMIA, LOGISTICA…" /></div>
+          <div class="field"><label>Área</label><select v-model="formulario.area" class="select"><option value="">Sin área</option><option v-for="a in areasOpciones" :key="a.id" :value="a.nombre">{{ a.etiqueta || a.nombre }}</option></select></div>
           <div class="field"><label>Responsable</label><select v-model="formulario.custodio_id" class="select"><option value="">Sin responsable</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select></div>
         </div>
         <div class="field"><label>Categoría</label><select v-model="formulario.categoria_id" class="select"><option value="">—</option><option v-for="c in catalogo.categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option></select></div>
