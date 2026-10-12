@@ -271,8 +271,10 @@ async function exportActivos(req, res, next) {
       ),
       db.getPool().query('SELECT nombre, ejemplos FROM categorias ORDER BY id'),
       // El catálogo de áreas, para que el Excel del útil pinte «Área 5 - …».
+      // El alias `ar` es el que usa AREA_ETIQUETA; sin él la consulta muere con
+      // «missing FROM-clause entry for table "ar"».
       util
-        ? db.getPool().query(`SELECT nombre, ${AREA_ETIQUETA} AS etiqueta FROM areas WHERE nombre IS NOT NULL`)
+        ? db.getPool().query(`SELECT nombre, ${AREA_ETIQUETA} AS etiqueta FROM areas ar WHERE ar.nombre IS NOT NULL`)
         : Promise.resolve({ rows: [] })
     ]);
     const areasPorNombre = new Map(areas.rows.map((a) => [a.nombre, a.etiqueta]));

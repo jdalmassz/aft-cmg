@@ -389,7 +389,7 @@ async function exportActivosPdf(req, res, next) {
         ELSE NULL END AS area_id,
       CASE WHEN split_part(a.comentarios, E'\\n', 1) LIKE 'Área: %'
         THEN COALESCE((SELECT numero FROM areas ar4 WHERE ar4.nombre = substr(split_part(a.comentarios, E'\\n', 1), 7)), 9999)
-        ELSE NULL END AS area_numero`;
+        ELSE NULL END AS area_numero,`;
     const cols = util
       // Con el área del útil en el hueco del `area` del activo fijo (el JOIN de
       // `areas` da NULL porque no hay ubicación que seguir).
