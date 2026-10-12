@@ -185,12 +185,14 @@ async function exportCustodiosXlsx(req, res, next) {
 // Carta 612x792
 const M = { left: 40, right: 40, top: 36, bottom: 40 };
 /*
- * La columna de nombres se dio para que EL NOMBRE ENTERO QUEPA EN UNA LÍNEA:
- * el más largo («MICHEL EDUARDO RODRIGUEZ CORDOVA») mide 184 pt a Helvetica 9,
- * y con `resp: 190` sólo quedaban 142, así que se partía en dos y la segunda
- * línea se montaba en la fila de abajo. Con 245 quedan 197 de ancho útil.
+ * Las DOS primeras columnas se dieron anchas para que su contenido QUEPA EN UNA
+ * LÍNEA: el nombre más largo («MICHEL EDUARDO RODRIGUEZ CORDOVA») mide 184 pt y
+ * una lista de dos áreas 178 pt, a Helvetica 9. Con `resp: 190` sólo quedaban
+ * 142 y con `areas: 380` 167, así que ambas se partían y la segunda línea se
+ * montaba en la fila de abajo. Ahora quedan 197 y 261, suficientes para el
+ * nombre y hasta tres áreas. Si alguno llevara más, la fila crece (se mide abajo).
  */
-const COL = { resp: 245, areas: 420, fin: 572 }; // fin = borde derecho de la tabla
+const COL = { resp: 245, areas: 514, fin: 572 }; // fin = borde derecho de la tabla
 const ROW_H = 16;
 const HEAD_H = 22;
 
