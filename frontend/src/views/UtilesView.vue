@@ -29,7 +29,7 @@ import { ok, err } from '../toast'
 import { confirmar } from '../confirm'
 
 const utiles = ref([])
-const catalogo = ref({ categorias: [], custodios: [], marcas: [], areas: [] })
+const catalogo = ref({ categorias: [], custodios: [], custodiosTodos: [], marcas: [], areas: [] })
 const loading = ref(true)
 const errores = ref('')
 
@@ -526,7 +526,6 @@ onMounted(() => {
             <button class="menu-op" :disabled="exportandoExcel" @click="elegirExcel(descargarExcel)"><AppIcon name="file" :size="15" /> {{ exportandoExcel ? 'Generando…' : 'Exportar .xlsx' }}</button>
           </div>
         </span>
-        <button class="btn sec sm" :disabled="!total" @click="abrirExport()" title="Hoja de conteo en PDF, por responsable"><AppIcon name="file" :size="15" /> PDF</button>
         <button class="btn sm" @click="abrirNuevo"><AppIcon name="plus" :size="15" /> Nuevo útil</button>
       </span>
     </div>
@@ -646,7 +645,7 @@ onMounted(() => {
           </div>
           <div class="dos">
             <div class="field"><label>Área</label><select v-model="formulario.area" class="select"><option value="">Sin área</option><option v-for="a in areasOpciones" :key="a.id" :value="a.nombre">{{ a.etiqueta || a.nombre }}</option></select></div>
-            <div class="field"><label>Responsable</label><select v-model="formulario.custodio_id" class="select"><option value="">Sin responsable</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select></div>
+            <div class="field"><label>Responsable</label><select v-model="formulario.custodio_id" class="select"><option value="">Sin responsable</option><option v-for="c in catalogo.custodiosTodos" :key="c.id" :value="c.id">{{ c.nombre }}</option></select></div>
           </div>
           <div class="field"><label>Categoría</label><select v-model="formulario.categoria_id" class="select"><option value="">—</option><option v-for="c in catalogo.categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option></select></div>
           <div class="dos">
@@ -709,7 +708,7 @@ onMounted(() => {
         </div>
         <div class="dos">
           <div class="field"><label>Área</label><select v-model="formulario.area" class="select"><option value="">Sin área</option><option v-for="a in areasOpciones" :key="a.id" :value="a.nombre">{{ a.etiqueta || a.nombre }}</option></select></div>
-          <div class="field"><label>Responsable</label><select v-model="formulario.custodio_id" class="select"><option value="">Sin responsable</option><option v-for="c in catalogo.custodios" :key="c.id" :value="c.id">{{ c.nombre }}</option></select></div>
+          <div class="field"><label>Responsable</label><select v-model="formulario.custodio_id" class="select"><option value="">Sin responsable</option><option v-for="c in catalogo.custodiosTodos" :key="c.id" :value="c.id">{{ c.nombre }}</option></select></div>
         </div>
         <div class="field"><label>Categoría</label><select v-model="formulario.categoria_id" class="select"><option value="">—</option><option v-for="c in catalogo.categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option></select></div>
         <div class="dos">

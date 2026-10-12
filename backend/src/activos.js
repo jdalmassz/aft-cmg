@@ -180,11 +180,34 @@ const valoresFila = (a, util, areasPorNombre) => [
   ...(util ? [a.created_at ? new Date(a.created_at) : null] : [])
 ];
 
+/*
+ * Cómo SALE EN PAPEL el Excel, no cómo se ve en pantalla. Sin esto, al imprimir
+ * (o al «Guardar como PDF» de la impresora) el libro va con los defaults: en
+ * apaisado no, sin ajustar al ancho de la página las columnas de la derecha caen
+ * a una segunda hoja, y la cabecera no se repite. Letter, como el resto de
+ * hojas del sistema (ver export-pdf.js).
+ */
+function configurarImpresion(ws, { repetirCabecera = true } = {}) {
+  ws.pageSetup = {
+    paperSize: 1, // Letter
+    orientation: 'landscape',
+    fitToPage: true,
+    fitToWidth: 1,  // todas las columnas en el ancho de una página
+    fitToHeight: 0, // y que las filas sigan bajando por varias páginas
+    margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 },
+    horizontalCentered: true
+  };
+  // La fila 1 (los títulos) se vuelve a imprimir en cada página.
+  if (repetirCabecera) ws.pageSetup.printTitlesRow = '1:1';
+  return ws;
+}
+
 function writeActivosSheet(wb, activos, { hoja, tabla = 'Tabla1', util = false, areasPorNombre = null } = {}) {
   const cols = columnasDe(util);
   const ws = wb.addWorksheet(hoja || (util ? 'Utiles' : 'Activos'), {
     views: [{ showGridLines: false, zoomScale: 110, zoomScaleNormal: 110 }]
   });
+  configurarImpresion(ws);
 
   cols.forEach((c, i) => {
     const col = ws.getColumn(i + 1);
@@ -224,6 +247,7 @@ function writeCategoriaSheet(wb, categorias) {
   const ws = wb.addWorksheet('Categoria', {
     views: [{ showGridLines: false, zoomScale: 110, zoomScaleNormal: 110 }]
   });
+  configurarImpresion(ws);
   ws.columns = [
     { header: 'Categoria', key: 'nombre', width: 36.5546875 },
     { header: 'Ejemplos', key: 'ejemplos', width: 24.6640625 }
@@ -665,16 +689,22 @@ async function catalogo(req, res, next) {
     if (!alc) {
       return res.json({
         categorias: [], sucursales: [], areas: [], ubicaciones: [],
-        custodios: [], marcas: [], responsablesPorArea: []
+        custodios: [], custodiosTodos: [], marcas: [], responsablesPorArea: []
       });
     }
     const qResp = { params: [], p: (v) => { qResp.params.push(v); return `$${qResp.params.length}`; } };
     const cResp = alcance.condicionSucursal(req.user, qResp.p);
-    const [categorias, sucursales, areas, ubicaciones, custodios, marcas, respArea] = await Promise.all([
+    const [categorias, sucursales, areas, ubicaciones, custodios, custodiosTodos, marcas, respArea] = await Promise.all([
       db.getPool().query('SELECT id, nombre, ejemplos FROM categorias ORDER BY nombre'),
       db.getPool().query('SELECT id, nombre FROM sucursales ORDER BY nombre'),
       db.getPool().query(`SELECT ar.id, ar.numero, ar.nombre, ${AREA_ETIQUETA} AS etiqueta, ar.responsable_id, c.nombre AS responsable FROM areas ar LEFT JOIN custodios c ON c.id = ar.responsable_id ORDER BY ar.numero`),
       db.getPool().query(`SELECT id, nombre, area_id FROM ubicaciones ORDER BY ${ordenUbicaciones()}`),
+      db.getPool().query(`
+        SELECT id, nombre FROM custodios
+        WHERE EXISTS (SELECT 1 FROM activos a WHERE a.custodio_id = custodios.id)
+        ORDER BY nombre`),
+      // Los MISMOS, sin filtrar: el formulario de alta/edición necesita poder
+      // asignarle su primer activo a un responsable que todavía no tiene ninguno.
       db.getPool().query('SELECT id, nombre FROM custodios ORDER BY nombre'),
       db.getPool().query('SELECT id, nombre FROM marcas ORDER BY nombre'),
       // Quién tiene activos en cada área: es de donde sale el selector de
@@ -694,6 +724,7 @@ async function catalogo(req, res, next) {
       areas: areas.rows,
       ubicaciones: ubicaciones.rows,
       custodios: custodios.rows,
+      custodiosTodos: custodiosTodos.rows,
       marcas: marcas.rows,
       responsablesPorArea: respArea.rows
     });

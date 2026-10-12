@@ -134,6 +134,13 @@ async function exportCustodiosXlsx(req, res, next) {
     const ws = wb.addWorksheet('Responsables', {
       views: [{ showGridLines: false, zoomScale: 110, zoomScaleNormal: 110 }]
     });
+    // Igual que el Excel de activos: Letter apaisado, ajustado al ancho y con la
+    // cabecera repetida, para que al imprimir (o «Guardar como PDF») no se parta.
+    ws.pageSetup = {
+      paperSize: 1, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+      margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 },
+      horizontalCentered: true, printTitlesRow: '1:1'
+    };
     const columnas = [
       { header: 'Responsable', width: 40 },
       { header: 'Áreas', width: 55 },
@@ -177,7 +184,13 @@ async function exportCustodiosXlsx(req, res, next) {
  */
 // Carta 612x792
 const M = { left: 40, right: 40, top: 36, bottom: 40 };
-const COL = { resp: 190, areas: 380, fin: 572 }; // fin = borde derecho de la tabla
+/*
+ * La columna de nombres se dio para que EL NOMBRE ENTERO QUEPA EN UNA LÍNEA:
+ * el más largo («MICHEL EDUARDO RODRIGUEZ CORDOVA») mide 184 pt a Helvetica 9,
+ * y con `resp: 190` sólo quedaban 142, así que se partía en dos y la segunda
+ * línea se montaba en la fila de abajo. Con 245 quedan 197 de ancho útil.
+ */
+const COL = { resp: 245, areas: 420, fin: 572 }; // fin = borde derecho de la tabla
 const ROW_H = 16;
 const HEAD_H = 22;
 
@@ -245,18 +258,16 @@ async function exportCustodiosPdf(req, res, next) {
     let y = dibujarCabecera(doc);
     doc.font('Helvetica').fontSize(9);
     for (const f of filas) {
-      // El alto de la fila lo manda la celda MÁS ALTA de las tres: un nombre
-      // largo («JUNIOR DARIEL ALMANARALES SANCHEZ») se parte en dos líneas y,
-      // si no se mide, la segunda se monta en la fila de abajo.
-      const hNombre = doc.heightOfString(f.nombre, { width: COL.resp - M.left - 8 });
+      // El nombre va SIEMPRE en una línea (la columna se dio ancha para eso);
+      // el alto de la fila lo manda la celda de áreas, que sí puede llevar varias.
       const hAreas = doc.heightOfString(f.areas || '—', { width: COL.areas - COL.resp - 8 });
-      const h = Math.max(ROW_H, hNombre + 6, hAreas + 6);
+      const h = Math.max(ROW_H, hAreas + 6);
       if (y + h > doc.page.height - M.bottom - 16) {
         doc.addPage();
         y = dibujarCabecera(doc);
         doc.font('Helvetica').fontSize(9);
       }
-      doc.text(f.nombre, M.left + 4, y + 3, { width: COL.resp - M.left - 8 });
+      doc.text(f.nombre, M.left + 4, y + 3, { width: COL.resp - M.left - 8, lineBreak: false });
       doc.text(f.areas || '—', COL.resp + 4, y + 3, { width: COL.areas - COL.resp - 8 });
       doc.text(String(f.activos), COL.areas + 4, y + 3, { width: COL.fin - COL.areas - 8, align: 'right', lineBreak: false });
       doc.lineWidth(0.5).strokeColor('#bbb')

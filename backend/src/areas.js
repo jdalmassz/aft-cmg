@@ -349,6 +349,13 @@ async function exportAreasXlsx(req, res, next) {
     const ws = wb.addWorksheet('Áreas', {
       views: [{ showGridLines: false, zoomScale: 110, zoomScaleNormal: 110 }]
     });
+    // Letter apaisado, ajustado al ancho y con la cabecera repetida: si no, al
+    // imprimir (o «Guardar como PDF») se parte como le da la gana al programa.
+    ws.pageSetup = {
+      paperSize: 1, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+      margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 },
+      horizontalCentered: true, printTitlesRow: '1:1'
+    };
     const columnas = [
       { header: 'Nº', width: 6 },
       { header: 'Área', width: 42 },
