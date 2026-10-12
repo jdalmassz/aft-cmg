@@ -245,9 +245,12 @@ async function exportCustodiosPdf(req, res, next) {
     let y = dibujarCabecera(doc);
     doc.font('Helvetica').fontSize(9);
     for (const f of filas) {
-      // El alto de la fila lo manda la celda de áreas: puede llevar varias.
+      // El alto de la fila lo manda la celda MÁS ALTA de las tres: un nombre
+      // largo («JUNIOR DARIEL ALMANARALES SANCHEZ») se parte en dos líneas y,
+      // si no se mide, la segunda se monta en la fila de abajo.
+      const hNombre = doc.heightOfString(f.nombre, { width: COL.resp - M.left - 8 });
       const hAreas = doc.heightOfString(f.areas || '—', { width: COL.areas - COL.resp - 8 });
-      const h = Math.max(ROW_H, hAreas + 6);
+      const h = Math.max(ROW_H, hNombre + 6, hAreas + 6);
       if (y + h > doc.page.height - M.bottom - 16) {
         doc.addPage();
         y = dibujarCabecera(doc);
