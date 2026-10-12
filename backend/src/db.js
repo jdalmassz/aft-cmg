@@ -31,7 +31,7 @@ async function initSchema() {
   await db.query(
     `CREATE TABLE IF NOT EXISTS schema_seeds (nombre TEXT PRIMARY KEY, applied_at TIMESTAMPTZ DEFAULT now())`
   );
-  const seedFiles = ['seed_activos.sql', 'seed_limpieza_custodios.sql', 'seed_areas.sql', 'seed_datos_trabajador.sql'];
+  const seedFiles = ['seed_activos.sql', 'seed_limpieza_custodios.sql', 'seed_areas.sql', 'seed_datos_trabajador.sql', 'seed_datos_trabajador2.sql'];
   const seedDir = path.join(__dirname, 'data');
   for (const f of seedFiles) {
     const p = path.join(seedDir, f);
