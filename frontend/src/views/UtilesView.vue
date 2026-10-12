@@ -651,7 +651,7 @@ onMounted(() => {
         </div>
 
         <div v-else class="det-grid">
-          <div class="det"><span>Área</span><b>{{ areaDe(utilSel.comentarios) || '—' }}</b></div>
+          <div class="det"><span>Área</span><b>{{ etiquetaAreaNombre(areaDe(utilSel.comentarios)) || '—' }}</b></div>
           <div class="det"><span>Responsable</span><b>{{ utilSel.custodio || 'Sin responsable' }}</b></div>
           <div class="det"><span>Cantidad</span><b>{{ utilSel.cantidad }}</b></div>
           <div class="det"><span>Marca</span><b>{{ utilSel.marca || '—' }}</b></div>
