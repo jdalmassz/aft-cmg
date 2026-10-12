@@ -6,7 +6,7 @@ import Drawer from '../components/Drawer.vue'
 import { ok, err } from '../toast'
 import { confirmar } from '../confirm'
 import { invalidarCatalogo } from '../catalogo'
-import { construirDocumento } from '../imprimir'
+import { usePreviewPdf } from '../previewPdf'
 
 const lista = ref([])
 const loading = ref(true)
@@ -16,6 +16,8 @@ const q = ref('')
 const mostrar = ref(false)
 const editando = ref(null)
 const nombre = ref('')
+const carnet = ref('')
+const cargo = ref('')
 const userId = ref('')
 const usuarios = ref([])
 const guardando = ref(false)
@@ -37,60 +39,71 @@ async function cargar() {
 }
 
 /*
- * Hoja de responsables y sus áreas: la MISMA que se imprime y la que sale en el
- * Excel. Se enseña en un cajón con la hoja dentro (un iframe con el documento),
- * y desde ahí se puede imprimir (papel o PDF del navegador) o bajar el .xlsx.
+ * Hoja de responsables y sus áreas, y el acta de responsabilidad material de
+ * cada uno: los DOS documentos los genera el servidor en PDF (mismo papel que
+ * sale por la impresora) y aquí sólo se enseñan en el cajón, con sus botones
+ * de bajar e imprimir. El filtro de la pantalla entra en la hoja por query.
  */
-const hojaAbierta = ref(false)
-const visorHtml = ref(null)
-const exportando = ref(false)
+const preview = usePreviewPdf()
+const visorPdf = ref(null)
+// Qué PDF está dentro del cajón: manda el nombre al bajarlo.
+const tipoPreview = ref('hoja')
+const actaNombre = ref('')
+const exportandoXls = ref(false)
 
-const filasHoja = computed(() =>
-  filtrados.value.map((c) => [c.nombre, (c.areas || []).join(', '), String(c.activos)])
-)
+function filtrosHoja() {
+  const f = new URLSearchParams()
+  const t = q.value.trim()
+  if (t) f.set('q', t)
+  return f.toString()
+}
 
-const htmlHoja = computed(() => construirDocumento({
-  titulo: 'Responsables y Áreas',
-  subtitulo: `${filtrados.value.length} responsable(s)`,
-  columnas: [{ t: 'Responsable' }, { t: 'Áreas' }, { t: 'Activos', clase: 'num' }],
-  filas: filasHoja.value
-}))
+async function verHoja() {
+  tipoPreview.value = 'hoja'
+  await preview.abrir('/api/admin/custodios/export/pdf' + (filtrosHoja() ? '?' + filtrosHoja() : ''))
+}
 
-function imprimirHoja() {
-  const w = visorHtml.value?.contentWindow
-  if (w) {
-    try { w.focus(); w.print(); return } catch (_) { /* respaldo abajo */ }
-  }
-  // Sin visor (raro): se imprime el mismo documento en un marco aparte.
-  const marco = document.createElement('iframe')
-  marco.setAttribute('aria-hidden', 'true')
-  marco.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;opacity:0;border:0'
-  marco.addEventListener('load', () => {
-    try { marco.contentWindow.focus(); marco.contentWindow.print() } catch (_) { /* nada */ }
-    setTimeout(() => marco.remove(), 120000)
-  })
-  document.body.appendChild(marco)
-  marco.srcdoc = htmlHoja.value
+async function verActa(c) {
+  tipoPreview.value = 'acta'
+  actaNombre.value = c.nombre
+  await preview.abrir(`/api/admin/custodios/${c.id}/acta/pdf`)
+}
+
+const nombreDescarga = computed(() => {
+  const fecha = new Date().toISOString().slice(0, 10)
+  return tipoPreview.value === 'acta'
+    ? `Acta-responsabilidad-${actaNombre.value.replace(/\s+/g, '_')}-${fecha}.pdf`
+    : `Responsables-y-areas-${fecha}.pdf`
+})
+
+function descargarPdf() {
+  preview.descargar(nombreDescarga.value)
 }
 
 async function exportarExcel() {
-  exportando.value = true
+  exportandoXls.value = true
   try {
-    await api.download('/api/admin/custodios/export/xlsx', 'Responsables-y-areas-' + new Date().toISOString().slice(0, 10) + '.xlsx')
+    const qs = filtrosHoja()
+    await api.download('/api/admin/custodios/export/xlsx' + (qs ? '?' + qs : ''), 'Responsables-y-areas-' + new Date().toISOString().slice(0, 10) + '.xlsx')
     ok('Excel descargado')
-  } catch (e) { err(e.message) } finally { exportando.value = false }
+  } catch (e) { err(e.message) } finally { exportandoXls.value = false }
 }
 
 function abrirNuevo() {
   editando.value = null
   nombre.value = ''
+  carnet.value = ''
+  cargo.value = ''
   userId.value = ''
   mostrar.value = true
 }
 
+// Editar se abre con un CLIC en la fila: la tabla no lleva botones sueltos.
 function abrirEditar(c) {
   editando.value = c
   nombre.value = c.nombre
+  carnet.value = c.carnet || ''
+  cargo.value = c.cargo || ''
   userId.value = c.user_id || ''
   mostrar.value = true
 }
@@ -101,11 +114,12 @@ async function guardar() {
   guardando.value = true
   error.value = ''
   try {
+    const datos = { nombre: n, carnet: carnet.value.trim(), cargo: cargo.value.trim(), user_id: userId.value || null }
     if (editando.value) {
-      await api.put(`/api/admin/custodios/${editando.value.id}`, { nombre: n, user_id: userId.value || null })
+      await api.put(`/api/admin/custodios/${editando.value.id}`, datos)
       ok('Responsable actualizado')
     } else {
-      await api.post('/api/admin/custodios', { nombre: n, user_id: userId.value || null })
+      await api.post('/api/admin/custodios', datos)
       ok('Responsable creado')
     }
     mostrar.value = false
@@ -114,7 +128,10 @@ async function guardar() {
   } catch (e) { error.value = e.message } finally { guardando.value = false }
 }
 
-function eliminar(c) {
+// El eliminar vive en el cajón de edición, que es donde se edita todo lo demás.
+function eliminar() {
+  const c = editando.value
+  if (!c) return
   if (c.activos > 0) {
     err(`No se puede eliminar: ${c.nombre} tiene ${c.activos} activo(s) asignados`)
     return
@@ -127,6 +144,7 @@ function eliminar(c) {
     try {
       await api.del(`/api/admin/custodios/${c.id}`)
       ok('Responsable eliminado')
+      mostrar.value = false
       invalidarCatalogo()
       cargar()
     } catch (e) { err(e.message) }
@@ -144,7 +162,7 @@ onMounted(cargar)
         <p class="muted">{{ lista.length }} responsable(s) · {{ totalActivos }} activo(s) asignado(s)</p>
       </div>
       <span class="btns">
-        <button class="btn sec" title="Hoja de responsables y sus áreas: vista previa, imprimirla o bajarla en Excel" @click="hojaAbierta = true">
+        <button class="btn sec" title="Hoja de responsables y sus áreas: vista previa, imprimirla o bajarla en PDF/Excel" @click="verHoja">
           <AppIcon name="printer" :size="14" /> Hoja responsables
         </button>
         <button class="btn" @click="abrirNuevo"><AppIcon name="plus" :size="14" /> Nuevo responsable</button>
@@ -162,14 +180,16 @@ onMounted(cargar)
       <table class="tbl">
         <thead><tr><th>Nombre</th><th>Áreas</th><th>Usuario</th><th>Activos</th><th></th></tr></thead>
         <tbody>
-          <tr v-for="c in filtrados" :key="c.id">
+          <!-- Toda la fila abre el cajón de edición: no hay botones Editar/Eliminar. -->
+          <tr v-for="c in filtrados" :key="c.id" class="fila" @click="abrirEditar(c)">
             <td><b>{{ c.nombre }}</b></td>
             <td class="muted">{{ (c.areas || []).join(', ') || '—' }}</td>
             <td><span v-if="c.username" class="usr"><AppIcon name="user-check" :size="13" /> {{ c.username }}</span><span v-else class="muted">—</span></td>
             <td><span class="badge" :class="c.activos ? 'ok' : 'warn'">{{ c.activos }}</span></td>
             <td class="acciones">
-              <button class="btn sec sm" @click="abrirEditar(c)"><AppIcon name="edit" :size="14" /> Editar</button>
-              <button class="btn sec sm" :disabled="c.activos > 0" :title="c.activos > 0 ? 'Tiene activos asignados' : ''" @click="eliminar(c)"><AppIcon name="trash" :size="14" /> Eliminar</button>
+              <button class="btn sec sm" title="Acta de responsabilidad material: vista previa, imprimir o bajar en PDF" @click.stop="verActa(c)">
+                <AppIcon name="file" :size="14" /> Acta
+              </button>
             </td>
           </tr>
           <tr v-if="!filtrados.length">
@@ -185,6 +205,14 @@ onMounted(cargar)
         <label>Nombre *</label>
         <input v-model="nombre" class="input" placeholder="Nombre completo del responsable" @keyup.enter="guardar" />
       </div>
+      <div class="field">
+        <label>Carnet de Identidad</label>
+        <input v-model="carnet" class="input" inputmode="numeric" placeholder="N.º de carnet (sale en el acta)" />
+      </div>
+      <div class="field">
+        <label>Cargo</label>
+        <input v-model="cargo" class="input" placeholder="Cargo u ocupación (sale en el acta)" />
+      </div>
       <div class="field vinculo">
         <label>Usuario del sistema</label>
         <select v-model="userId" class="select">
@@ -193,20 +221,25 @@ onMounted(cargar)
         </select>
       </div>
       <template #pie>
+        <button v-if="editando" class="btn danger" :disabled="editando.activos > 0" :title="editando.activos > 0 ? 'Tiene activos asignados' : 'Eliminar responsable'" @click="eliminar">
+          <AppIcon name="trash" :size="15" /> Eliminar
+        </button>
         <button class="btn sec" @click="mostrar = false">Cancelar</button>
         <button class="btn" :disabled="guardando" @click="guardar">{{ guardando ? 'Guardando…' : 'Guardar' }}</button>
       </template>
     </Drawer>
 
-    <!-- Hoja de responsables: vista previa del mismo documento que se imprime. -->
-    <Drawer :open="hojaAbierta" titulo="Responsables y Áreas" :subtitulo="`${filtrados.length} responsable(s)`" :ancho="720" @close="hojaAbierta = false">
+    <!-- Vista previa de un PDF del servidor: hoja de responsables o acta de un responsable. -->
+    <Drawer :open="preview.abierta" :titulo="tipoPreview === 'acta' ? 'Acta de responsabilidad material' : 'Responsables y Áreas'" subtitulo="Tal como se imprimirá" :ancho="860" clase="preview-drawer" :extra="{ '--dw-pegado': '380px' }" :sinClose="true" @close="preview.cerrar">
       <div class="preview-caja">
-        <iframe ref="visorHtml" class="preview-iframe" :srcdoc="htmlHoja" title="Vista previa de la hoja"></iframe>
+        <iframe v-if="preview.url" ref="visorPdf" class="preview-iframe" :src="preview.url" title="Vista previa de la hoja"></iframe>
+        <div v-else class="center"><span class="spinner"></span></div>
       </div>
       <template #pie>
-        <button class="btn sec" @click="hojaAbierta = false">Cerrar</button>
-        <button class="btn sec" :disabled="exportando" @click="exportarExcel"><AppIcon name="file" :size="15" /> {{ exportando ? 'Generando…' : 'Exportar Excel' }}</button>
-        <button class="btn" @click="imprimirHoja"><AppIcon name="printer" :size="15" /> Imprimir</button>
+        <button class="btn sec" :disabled="!preview.url" @click="descargarPdf"><AppIcon name="file" :size="15" /> PDF</button>
+        <!-- El acta no tiene su parte en Excel: ese botón es del listado. -->
+        <button v-if="tipoPreview === 'hoja'" class="btn sec" :disabled="exportandoXls" @click="exportarExcel"><AppIcon name="file" :size="15" /> {{ exportandoXls ? 'Generando…' : 'Excel' }}</button>
+        <button class="btn" :disabled="!preview.url" @click="preview.imprimir(visorPdf)"><AppIcon name="printer" :size="15" /> Imprimir</button>
       </template>
     </Drawer>
   </div>
@@ -222,14 +255,15 @@ onMounted(cargar)
 .center { display: grid; place-items: center; padding: 60px; }
 .err { color: var(--danger); font-weight: 600; }
 .acciones { text-align: right; white-space: nowrap; }
-.acciones .btn { margin-left: 6px; }
 .vacio { text-align: center; color: var(--muted); padding: 28px 12px; }
 .vinculo { margin-top: 12px; }
 .usr { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; color: var(--primary-dark); }
+.fila { cursor: pointer; }
+.fila:hover { background: color-mix(in srgb, var(--primary) 5%, transparent); }
 
 /* Vista previa de la hoja: el documento dentro del cajón, con su papel gris. */
 .preview-caja {
-  height: min(70vh, 640px);
+  flex: 1; min-height: 0;
   background: #e2e8f0; border: 1px solid var(--border); border-radius: 10px;
   overflow: hidden; display: grid; place-items: center;
 }

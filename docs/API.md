@@ -247,17 +247,26 @@ Elimina (solo rol `admin`). Devuelve `{ "ok": true }`.
 
 ## Admin (responsables / custodios) — solo rol `admin`
 
-- `GET /api/admin/custodios` → `[{ id, nombre, activos, areas }]` (conteo de activos
-  asignados; `areas` = etiquetas de las áreas de sus activos, fijos y útiles,
-  p. ej. `["Área 5 - FACTURACION"]`)
-- `GET /api/admin/custodios/export/xlsx` → Excel *Responsables y áreas*:
+- `GET /api/admin/custodios` → `[{ id, nombre, carnet, cargo, activos, areas }]`
+  (conteo de activos asignados; `areas` = etiquetas de las áreas de sus activos,
+  fijos y útiles, p. ej. `["Área 5 - FACTURACION"]`). `carnet` y `cargo` son los
+  datos del trabajador que rellenan el acta; `null` si no están guardados.
+- `GET /api/admin/custodios/export/xlsx?q=` → Excel *Responsables y áreas*:
   `Responsable · Áreas · Activos` (una fila por responsable; las áreas, separadas
-  por coma)
-- `POST /api/admin/custodios` → `{ "nombre": "..." }` → `201` con `{ id, nombre, activos: 0 }`
-- `PUT /api/admin/custodios/:id` → `{ "nombre": "..." }` (renombrar)
+  por coma; `q` filtra por nombre)
+- `GET /api/admin/custodios/export/pdf?q=` → el mismo listado en PDF Carta
+- `GET /api/admin/custodios/:id/acta/pdf` → **Acta de Reconocimiento y Aceptación
+  de Responsabilidad Material (Decreto Ley 249)** en PDF Carta: nombre, carnet y
+  cargo del responsable puestos y los conteos reales de la BD en *Activos Fijos
+  Tangibles* y *Útiles y Herramientas*. *Medios de Rotación* y *Medios Monetarios*
+  salen en blanco (el sistema no los lleva).
+- `POST /api/admin/custodios` → `{ "nombre": "...", "carnet": "...", "cargo": "...", "user_id": null }` → `201` con `{ id, nombre, carnet, cargo, activos: 0 }`
+- `PUT /api/admin/custodios/:id` → `{ "nombre": "...", "carnet": "...", "cargo": "...", "user_id": null }`
 - `DELETE /api/admin/custodios/:id` → `{ "ok": true }`; `400` si tiene activos asignados
 
-Nombres duplicados → `400` "Ya existe un responsable con ese nombre".
+Nombres duplicados → `400` "Ya existe un responsable con ese nombre". El carnet y
+el cargo no son obligatorios: vacíos se guardan como `null`. Los nombres existentes
+no se tocan al importarlos de la nómina (`seed_datos_trabajador.sql`).
 
 ## Admin (áreas y ubicaciones) — solo rol `admin`
 

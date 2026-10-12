@@ -56,6 +56,11 @@ CREATE TABLE IF NOT EXISTS custodios (
 -- Un responsable puede ser además un usuario del sistema
 ALTER TABLE custodios ADD COLUMN IF NOT EXISTS user_id TEXT UNIQUE REFERENCES users(id) ON DELETE SET NULL;
 
+-- Datos que rellenan el acta de responsabilidad material (Decreto Ley 249):
+-- el carnet y el cargo salen en la hoja, junto al nombre.
+ALTER TABLE custodios ADD COLUMN IF NOT EXISTS carnet TEXT;
+ALTER TABLE custodios ADD COLUMN IF NOT EXISTS cargo TEXT;
+
 -- El jefe del área: la persona que responde por toda ella. Se asigna al crear
 -- o editar el área (pantalla Áreas) y de ahí sale el Excel de áreas.
 ALTER TABLE areas ADD COLUMN IF NOT EXISTS responsable_id INTEGER REFERENCES custodios(id);
