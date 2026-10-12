@@ -101,6 +101,19 @@ const juntarArea = (area, resto) =>
  */
 const etiquetaArea = (id) => catalogo.value.areas.find((x) => x.id === Number(id))?.etiqueta || ''
 
+/**
+ * El área del útil está guardada como NOMBRE («FACTURACION») en `comentarios`;
+ * aquí se traduce a la etiqueta del catálogo («Área 2 - COMERCIAL Y FACTURACION»),
+ * la misma que pinta Inventario. Si el nombre no está en el catálogo (área
+ * renombrada o escrita a mano) se enseña tal cual, sin perderlo.
+ */
+const etiquetaAreaNombre = (nombre) => {
+  const n = (nombre || '').trim()
+  if (!n) return ''
+  const a = (catalogo.value.areas || []).find((x) => (x.nombre || '').trim() === n)
+  return a?.etiqueta || n
+}
+
 const chips = computed(() => {
   const f = filtrosAplicados.value
   const out = []
@@ -563,7 +576,7 @@ onMounted(() => {
               <td><b class="codigo">{{ u.codigo || '—' }}</b></td>
               <td><b>{{ u.descripcion }}</b></td>
               <td>{{ u.marca || '—' }}</td>
-              <td>{{ areaDe(u.comentarios) || '—' }}</td>
+              <td>{{ etiquetaAreaNombre(areaDe(u.comentarios)) || '—' }}</td>
               <td class="num">{{ u.cantidad }}</td>
               <td><span :class="{ sinresp: !u.custodio }">{{ u.custodio || 'Sin responsable' }}</span></td>
               <td><span class="badge" :class="u.estado === 'ACTIVO' ? 'ok' : 'warn'">{{ u.estado }}</span></td>
