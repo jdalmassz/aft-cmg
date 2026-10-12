@@ -79,6 +79,7 @@ const ORIGINAL_FONT = { name: 'Aptos Narrow', size: 11, family: 2, scheme: 'mino
 const ORIGINAL_HEADER_FONT = { ...ORIGINAL_FONT, bold: true };
 const MONEY_FMT = '#,##0.00';
 const FECHA_FMT = '[$-1540A]dd-mmm-yy;@';
+const FECHA_HORA_FMT = '[$-1540A]dd-mmm-yy hh:mm;@';
 
 // Mismo orden/estilo que "Control de AFT cmg rev01.xlsx" (hoja Activos)
 const EXPORT_COLS = [
@@ -121,7 +122,8 @@ const EXPORT_COLS_UTIL = [
   { header: 'Área', key: 'area', width: 16.88671875 },
   { header: 'Responsable', key: 'custodio', width: 35.33203125 },
   { header: 'Valor USD', key: 'valor_usd', width: 25.77734375, numFmt: MONEY_FMT },
-  { header: 'Comentarios', key: 'comentarios', width: 34.88671875 }
+  { header: 'Comentarios', key: 'comentarios', width: 34.88671875 },
+  { header: 'Creado', key: 'created_at', width: 18, numFmt: FECHA_HORA_FMT }
 ];
 
 /*
@@ -148,8 +150,17 @@ function styleHeaderRow(row) {
   });
 }
 
+/*
+ * El área del útil en el Excel sale CON su número («Área 5 - FACTURACION»), la
+ * misma etiqueta que en la pantalla y en el inventario: el nombre solo no dice
+ * en qué área está. `areasPorNombre` viene del catálogo; si un nombre no está
+ * (área borrada), se queda el texto tal cual.
+ */
+const etiquetaAreaTexto = (nombre, areasPorNombre) =>
+  (nombre && areasPorNombre?.get(nombre)) || nombre || null;
+
 // En la exportación la ubicación sale sin el número: «COMERCIAL 1» es «COMERCIAL».
-const valoresFila = (a, util) => [
+const valoresFila = (a, util, areasPorNombre) => [
   a.codigo ?? null,
   a.descripcion ?? null,
   a.marca ?? null,
@@ -161,14 +172,15 @@ const valoresFila = (a, util) => [
   a.fecha_adquisicion ?? null,
   // La ubicación del activo fijo y el área del útil van en el mismo hueco.
   util
-    ? (areaDe(a.comentarios) || null)
+    ? etiquetaAreaTexto(areaDe(a.comentarios), areasPorNombre)
     : (a.ubicacion ? a.ubicacion.replace(/\s*\d+$/, '') : null),
   a.custodio ?? null,
   a.valor_usd == null ? null : Number(a.valor_usd),
-  util ? sinArea(a.comentarios) : (a.comentarios ?? null)
+  util ? sinArea(a.comentarios) : (a.comentarios ?? null),
+  ...(util ? [a.created_at ? new Date(a.created_at) : null] : [])
 ];
 
-function writeActivosSheet(wb, activos, { hoja, tabla = 'Tabla1', util = false } = {}) {
+function writeActivosSheet(wb, activos, { hoja, tabla = 'Tabla1', util = false, areasPorNombre = null } = {}) {
   const cols = columnasDe(util);
   const ws = wb.addWorksheet(hoja || (util ? 'Utiles' : 'Activos'), {
     views: [{ showGridLines: false, zoomScale: 110, zoomScaleNormal: 110 }]
@@ -189,7 +201,7 @@ function writeActivosSheet(wb, activos, { hoja, tabla = 'Tabla1', util = false }
       headerRow: true,
       style: { theme: 'TableStyleLight13', showRowStripes: true },
       columns: cols.map((c) => ({ name: c.header, filterButton: true })),
-      rows: activos.map((a) => valoresFila(a, util))
+      rows: activos.map((a) => valoresFila(a, util, areasPorNombre))
     });
   } else {
     ws.getRow(1).values = cols.map((c) => c.header);
@@ -251,14 +263,19 @@ async function exportActivos(req, res, next) {
       ? (req.query.separar ? 'responsable' : '')
       : req.query.separar === 'responsable' ? 'responsable'
         : (req.query.separar === '1' || req.query.separar === 'ubicacion') ? 'ubicacion' : '';
-    const [rows, cats] = await Promise.all([
+    const [rows, cats, areas] = await Promise.all([
       db.getPool().query(
         `SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} ${from.sql}
          ORDER BY ${separar === 'responsable' ? 'cu.nombre NULLS LAST, ' : separar ? `ar.numero NULLS LAST, ${ordenUbicaciones('u.')}, ` : ''}a.id`,
         from.params
       ),
-      db.getPool().query('SELECT nombre, ejemplos FROM categorias ORDER BY id')
+      db.getPool().query('SELECT nombre, ejemplos FROM categorias ORDER BY id'),
+      // El catálogo de áreas, para que el Excel del útil pinte «Área 5 - …».
+      util
+        ? db.getPool().query(`SELECT nombre, ${AREA_ETIQUETA} AS etiqueta FROM areas WHERE nombre IS NOT NULL`)
+        : Promise.resolve({ rows: [] })
     ]);
+    const areasPorNombre = new Map(areas.rows.map((a) => [a.nombre, a.etiqueta]));
 
     const wb = new ExcelJS.Workbook();
     if (separar) {
@@ -275,11 +292,11 @@ async function exportActivos(req, res, next) {
         const nombre = separar === 'responsable'
           ? (a.custodio || 'Sin responsable')
           : `${a.area_numero != null ? 'A' + a.area_numero + ' ' : ''}${a.ubicacion || 'Sin ubicación'}`;
-        writeActivosSheet(wb, items, { hoja: nombreHoja(nombre, wb), tabla: `Tabla${n}`, util });
+        writeActivosSheet(wb, items, { hoja: nombreHoja(nombre, wb), tabla: `Tabla${n}`, util, areasPorNombre });
       }
-      if (!n) writeActivosSheet(wb, [], { util });
+      if (!n) writeActivosSheet(wb, [], { util, areasPorNombre });
     } else {
-      writeActivosSheet(wb, rows.rows, { util });
+      writeActivosSheet(wb, rows.rows, { util, areasPorNombre });
     }
     writeCategoriaSheet(wb, cats.rows);
 

@@ -374,6 +374,12 @@ function fmtFecha(iso) {
   return new Date(iso).toLocaleString('es-CU', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
+// En la tabla sólo interesa el día; la hora completa se ve en el detalle.
+function fmtFechaCorta(iso) {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleDateString('es-CU', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
 // En escritorio la vista previa vive AL LADO del cajón de opciones, sin taparlo:
 // se pide al abrir el cajón y se vuelve a pedir sola cuando cambian los datos.
 // En móvil no cabe al lado, así que allí sigue siendo un botón.
@@ -433,9 +439,12 @@ async function imprimirListado() {
       subtitulo: `${res.total} registro(s)`,
       columnas: [
         { t: 'Código' }, { t: 'Descripción' }, { t: 'Marca' }, { t: 'Modelo' },
-        { t: 'Cantidad', clase: 'num' }, { t: 'Responsable' }, { t: 'Estado' }
+        { t: 'Área' }, { t: 'Cantidad', clase: 'num' }, { t: 'Responsable' }, { t: 'Estado' }, { t: 'Creado' }
       ],
-      filas: res.activos.map((a) => [a.codigo, a.descripcion, a.marca, a.modelo, a.cantidad, a.custodio, a.estado])
+      filas: res.activos.map((a) => [
+        a.codigo, a.descripcion, a.marca, a.modelo,
+        etiquetaAreaNombre(areaDe(a.comentarios)), a.cantidad, a.custodio, a.estado, fmtFechaCorta(a.created_at)
+      ])
     }))
   } catch (e) { err(e.message) } finally { imprimiendo.value = false }
 }
@@ -569,7 +578,7 @@ onMounted(() => {
       <div class="card table-wrap">
         <table class="tbl" :class="{ compact: filasCompactas }">
           <thead>
-            <tr><th>Código</th><th>Descripción</th><th>Marca</th><th>Área</th><th class="num">Cant.</th><th>Responsable</th><th>Estado</th></tr>
+            <tr><th>Código</th><th>Descripción</th><th>Marca</th><th>Área</th><th class="num">Cant.</th><th>Responsable</th><th>Estado</th><th>Creado</th></tr>
           </thead>
           <tbody>
             <tr v-for="u in utiles" :key="u.id" :class="{ 'fila-act': utilSel?.id === u.id }" @click="abrirUtil(u)">
@@ -580,6 +589,7 @@ onMounted(() => {
               <td class="num">{{ u.cantidad }}</td>
               <td><span :class="{ sinresp: !u.custodio }">{{ u.custodio || 'Sin responsable' }}</span></td>
               <td><span class="badge" :class="u.estado === 'ACTIVO' ? 'ok' : 'warn'">{{ u.estado }}</span></td>
+              <td class="muted fecha-col">{{ fmtFechaCorta(u.created_at) }}</td>
             </tr>
           </tbody>
         </table>
@@ -658,6 +668,7 @@ onMounted(() => {
           <div class="det"><span>Modelo</span><b>{{ utilSel.modelo || '—' }}</b></div>
           <div class="det"><span>Categoría</span><b>{{ utilSel.categoria || '—' }}</b></div>
           <div class="det"><span>Estado</span><b>{{ utilSel.estado }}</b></div>
+          <div class="det"><span>Creado</span><b>{{ fmtFecha(utilSel.created_at) }}</b></div>
           <div class="det"><span>Valor CUP</span><b>{{ utilSel.valor_cup == null ? '—' : formatMoneda(utilSel.valor_cup) }}</b></div>
           <div class="det"><span>Valor USD</span><b>{{ utilSel.valor_usd == null ? '—' : formatMoneda(utilSel.valor_usd) }}</b></div>
           <div class="det"><span>Adquisición</span><b>{{ utilSel.fecha_adquisicion || '—' }}</b></div>
@@ -855,6 +866,8 @@ table.tbl .num { text-align: right; font-variant-numeric: tabular-nums; }
 .hist { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
 .hist li { display: flex; flex-direction: column; gap: 2px; border-left: 2px solid #c9dcff; padding-left: 10px; }
 .hist .muted { font-size: 11.5px; margin: 0; }
+
+.fecha-col { white-space: nowrap; font-size: 12px; }
 
 @media (max-width: 640px) {
   .hbt { display: none; }

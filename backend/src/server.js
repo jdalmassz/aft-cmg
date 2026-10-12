@@ -107,6 +107,7 @@ async function bootstrap() {
   adm.put('/users/:id', usersAdmin.updateUser);
 
   adm.get('/custodios', custodios.listCustodios);
+  adm.get('/custodios/export/xlsx', custodios.exportCustodiosXlsx);
   adm.post('/custodios', custodios.createCustodio);
   adm.put('/custodios/:id', custodios.updateCustodio);
   adm.delete('/custodios/:id', custodios.deleteCustodio);

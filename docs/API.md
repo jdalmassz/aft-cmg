@@ -247,7 +247,12 @@ Elimina (solo rol `admin`). Devuelve `{ "ok": true }`.
 
 ## Admin (responsables / custodios) — solo rol `admin`
 
-- `GET /api/admin/custodios` → `[{ id, nombre, activos }]` (conteo de activos asignados)
+- `GET /api/admin/custodios` → `[{ id, nombre, activos, areas }]` (conteo de activos
+  asignados; `areas` = etiquetas de las áreas de sus activos, fijos y útiles,
+  p. ej. `["Área 5 - FACTURACION"]`)
+- `GET /api/admin/custodios/export/xlsx` → Excel *Responsables y áreas*:
+  `Responsable · Áreas · Activos` (una fila por responsable; las áreas, separadas
+  por coma)
 - `POST /api/admin/custodios` → `{ "nombre": "..." }` → `201` con `{ id, nombre, activos: 0 }`
 - `PUT /api/admin/custodios/:id` → `{ "nombre": "..." }` (renombrar)
 - `DELETE /api/admin/custodios/:id` → `{ "ok": true }`; `400` si tiene activos asignados

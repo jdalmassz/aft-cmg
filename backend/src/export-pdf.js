@@ -2,7 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const PDFDocument = require('pdfkit');
 const db = require('./db');
-const { ACTIVOS_COLUMNS, ACTIVOS_FROM, AREA_ETIQUETA, buildWhere, ordenUbicaciones } = require('./activos-query');
+const { ACTIVOS_COLUMNS, ACTIVOS_FROM, AREA_ETIQUETA, AREA_ETIQUETA_DE, buildWhere, ordenUbicaciones } = require('./activos-query');
 
 const LOGO = path.join(__dirname, 'assets', 'procovar-logo.png');
 
@@ -252,12 +252,30 @@ function responsableDelArea(area) {
 }
 
 function escribirBloque(doc, activos, y, estado) {
-  // Un útil no tiene área ni ubicación: sus líneas van seguidas bajo el responsable,
-  // que ya está en la cabecera y en la firma. Meterlo en el árbol de áreas daría una
-  // página entera titulada «Sin área asignada → Sin ubicación».
+  /*
+   * ÚTILES: agrupados por SU área (la de la primera línea de `comentarios`), con
+   * el mismo rótulo «Área N - …» que el inventario. Un útil no tiene ubicación,
+   * así que no hay árbol debajo: sólo área y sus líneas.
+   */
   if (doc._meta.util) {
     estado.primera = false;
-    return escribirLineas(doc, activos, y) + 4;
+    const grupos = new Map();
+    for (const a of activos) {
+      const k = a.area_id ?? 'sin';
+      if (!grupos.has(k)) {
+        grupos.set(k, { etiqueta: a.area || 'Sin área asignada', numero: a.area_numero ?? 9999, items: [] });
+      }
+      grupos.get(k).items.push(a);
+    }
+    const orden = [...grupos.values()].sort((x, z) => x.numero - z.numero);
+    let yUtil = y;
+    for (const g of orden) {
+      yUtil = ensureSpace(doc, yUtil, AREA_H + ROW_H);
+      doc.font('Helvetica-Bold').fontSize(10).text(g.etiqueta, M.left, yUtil, { lineBreak: false });
+      yUtil += AREA_H;
+      yUtil = escribirLineas(doc, g.items, yUtil) + 4;
+    }
+    return yUtil;
   }
 
   // El responsable del filtro (si lo hay) sirve de respaldo para las ubicaciones
@@ -354,9 +372,34 @@ async function exportActivosPdf(req, res, next) {
     const pool = db.getPool();
     const util = req.tipoActivo === 'UTIL';
     const from = buildWhere({ q, categoria, area, ubicacion, custodio, marca, estado, tipo: util ? 'UTIL' : 'AFT', user: req.user });
+    /*
+     * El área del útil vive en `comentarios` («Área: ECONOMIA»), no en
+     * `ubicacion_id`, así que para el rótulo del PDF hay que traerla aparte y
+     * cuadrarla con el catálogo («Área 6 - ECONOMIA»). Un nombre que no esté en
+     * el catálogo se queda tal cual, sin perderlo.
+     */
+    const UTIL_AREA_SQL = `
+      CASE WHEN split_part(a.comentarios, E'\\n', 1) LIKE 'Área: %'
+        THEN COALESCE(
+          (SELECT ${AREA_ETIQUETA_DE('ar2')} FROM areas ar2 WHERE ar2.nombre = substr(split_part(a.comentarios, E'\\n', 1), 7)),
+          substr(split_part(a.comentarios, E'\\n', 1), 7))
+        ELSE NULL END AS area,
+      CASE WHEN split_part(a.comentarios, E'\\n', 1) LIKE 'Área: %'
+        THEN COALESCE((SELECT id FROM areas ar3 WHERE ar3.nombre = substr(split_part(a.comentarios, E'\\n', 1), 7)), -1)
+        ELSE NULL END AS area_id,
+      CASE WHEN split_part(a.comentarios, E'\\n', 1) LIKE 'Área: %'
+        THEN COALESCE((SELECT numero FROM areas ar4 WHERE ar4.nombre = substr(split_part(a.comentarios, E'\\n', 1), 7)), 9999)
+        ELSE NULL END AS area_numero`;
+    const cols = util
+      // Con el área del útil en el hueco del `area` del activo fijo (el JOIN de
+      // `areas` da NULL porque no hay ubicación que seguir).
+      ? ACTIVOS_COLUMNS
+        .replace('u.area_id, ar.numero AS area_numero,', '')
+        .replace(`${AREA_ETIQUETA} AS area,`, UTIL_AREA_SQL)
+      : ACTIVOS_COLUMNS;
     const rows = await pool.query(
-      `SELECT ${ACTIVOS_COLUMNS} ${ACTIVOS_FROM} ${from.sql}
-       ORDER BY ${util || req.query.separar === 'responsable' ? 'cu.nombre NULLS LAST, ' : ''}ar.numero NULLS LAST, ${ordenUbicaciones('u.')}, a.codigo NULLS LAST, a.id`,
+      `SELECT ${cols} ${ACTIVOS_FROM} ${from.sql}
+       ORDER BY ${util || req.query.separar === 'responsable' ? 'cu.nombre NULLS LAST, ' : ''}${util ? 'area_numero NULLS LAST, ' : `ar.numero NULLS LAST, ${ordenUbicaciones('u.')}, `}a.codigo NULLS LAST, a.id`,
       from.params
     );
 
