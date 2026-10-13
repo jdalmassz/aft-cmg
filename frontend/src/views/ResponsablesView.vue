@@ -318,8 +318,9 @@ onMounted(cargar)
       </template>
     </Drawer>
 
-    <!-- Vista previa de un PDF del servidor: hoja de responsables o acta de un responsable. -->
-    <Drawer :open="preview.abierta" :titulo="tituloPreview" subtitulo="Tal como se imprimirá" :ancho="860" clase="preview-drawer" :extra="extraPreview" :sinClose="true" @close="preview.cerrar">
+    <!-- Vista previa de un PDF del servidor: hoja de responsables o acta. Sin
+         subtítulo: el cajón de al lado ya dice de qué documento se trata. -->
+    <Drawer :open="preview.abierta" :titulo="tituloPreview" :ancho="860" clase="preview-drawer" :extra="extraPreview" :sinClose="true" @close="preview.cerrar">
       <div class="preview-caja">
         <iframe v-if="preview.url" ref="visorPdf" class="preview-iframe" :src="preview.url" title="Vista previa de la hoja"></iframe>
         <div v-else class="center"><span class="spinner"></span></div>
