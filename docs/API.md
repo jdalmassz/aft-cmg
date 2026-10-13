@@ -253,8 +253,9 @@ Elimina (solo rol `admin`). Devuelve `{ "ok": true }`.
   fijos y útiles, p. ej. `["Área 5 - FACTURACION"]`). `carnet` y `cargo` son los
   datos del trabajador que rellenan el acta; `null` si no están guardados.
 - `GET /api/admin/custodios/export/xlsx?q=` → Excel *Responsables y áreas*:
-  `Responsable · Áreas · Activos` (una fila por responsable; las áreas, separadas
-  por coma; `q` filtra por nombre)
+  `Responsable · Áreas · Activos · Útiles` (una fila por responsable; las áreas,
+  separadas por coma; `Activos` = fijos `tipo='AFT'`, `Útiles` = `tipo='UTIL'`;
+  `q` filtra por nombre)
 - `GET /api/admin/custodios/export/pdf?q=` → el mismo listado en PDF Carta
 - `GET /api/admin/custodios/:id/acta/pdf` → **Acta de Reconocimiento y Aceptación
   de Responsabilidad Material (Decreto Ley 249)** en PDF Carta: nombre, carnet y

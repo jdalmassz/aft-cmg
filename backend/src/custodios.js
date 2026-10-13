@@ -107,7 +107,8 @@ async function deleteCustodio(req, res, next) {
 
 /**
  * Excel «Responsables y áreas»: una fila por responsable con sus áreas (las
- * etiquetas, «Área 5 - FACTURACION») y su conteo de activos. Mismo formato que
+ * etiquetas, «Área 5 - FACTURACION») y sus conteos: activos fijos y útiles,
+ * cada uno en su columna. Mismo formato que
  * el Excel de áreas (TableStyleLight13, Aptos Narrow).
  */
 const FONT = { name: 'Aptos Narrow', size: 11, family: 2, scheme: 'minor' };
@@ -120,7 +121,9 @@ async function exportCustodiosXlsx(req, res, next) {
     const args = q ? [`%${q}%`] : [];
     const [r, areasDe] = await Promise.all([
       pool.query(`
-        SELECT cu.id, cu.nombre, COUNT(a.id)::int AS activos
+        SELECT cu.id, cu.nombre,
+               COUNT(a.id) FILTER (WHERE a.tipo = 'AFT')::int  AS activos,
+               COUNT(a.id) FILTER (WHERE a.tipo = 'UTIL')::int AS utiles
         FROM custodios cu
         LEFT JOIN activos a ON a.custodio_id = cu.id
         ${cond}
@@ -128,7 +131,7 @@ async function exportCustodiosXlsx(req, res, next) {
         ORDER BY cu.nombre`, args),
       areasPorCustodio(pool)
     ]);
-    const filas = r.rows.map((c) => [c.nombre, (areasDe.get(c.id) || []).join(', '), c.activos]);
+    const filas = r.rows.map((c) => [c.nombre, (areasDe.get(c.id) || []).join(', '), c.activos, c.utiles]);
 
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('Responsables', {
@@ -144,7 +147,8 @@ async function exportCustodiosXlsx(req, res, next) {
     const columnas = [
       { header: 'Responsable', width: 40 },
       { header: 'Áreas', width: 55 },
-      { header: 'Activos', width: 10 }
+      { header: 'Activos', width: 10 },
+      { header: 'Útiles', width: 10 }
     ];
     columnas.forEach((c, i) => { ws.getColumn(i + 1).width = c.width; });
 
@@ -180,7 +184,8 @@ async function exportCustodiosXlsx(req, res, next) {
 /**
  * PDF «Responsables y áreas»: la MISMA hoja que el Excel, en papel Carta.
  * Cabecera con el logo y la entidad (igual que el resto de hojas del sistema),
- * tabla de tres columnas y paginación con la página al pie.
+ * tabla de cuatro columnas (Responsable · Áreas · Activos · Útiles) y
+ * paginación con la página al pie.
  */
 // Carta 612x792
 const M = { left: 40, right: 40, top: 36, bottom: 40 };
@@ -189,10 +194,11 @@ const M = { left: 40, right: 40, top: 36, bottom: 40 };
  * LÍNEA: el nombre más largo («MICHEL EDUARDO RODRIGUEZ CORDOVA») mide 184 pt y
  * una lista de dos áreas 178 pt, a Helvetica 9. Con `resp: 190` sólo quedaban
  * 142 y con `areas: 380` 167, así que ambas se partían y la segunda línea se
- * montaba en la fila de abajo. Ahora quedan 197 y 261, suficientes para el
- * nombre y hasta tres áreas. Si alguno llevara más, la fila crece (se mide abajo).
+ * montaba en la fila de abajo. Ahora quedan 197 y 227: el nombre cabe en una
+ * línea y las áreas, si no caben, crecen la fila (se mide abajo). Las DOS
+ * últimas columnas son numéricas: Activos (fijos) y Útiles.
  */
-const COL = { resp: 245, areas: 514, fin: 572 }; // fin = borde derecho de la tabla
+const COL = { resp: 245, areas: 480, activos: 528, fin: 572 }; // fin = borde derecho de la tabla
 const ROW_H = 16;
 const HEAD_H = 22;
 
@@ -209,7 +215,8 @@ function dibujarCabecera(doc) {
   doc.font('Helvetica-Bold').fontSize(9);
   doc.text('Responsable', M.left + 4, yHead + 5, { lineBreak: false });
   doc.text('Áreas', COL.resp + 4, yHead + 5, { lineBreak: false });
-  doc.text('Activos', COL.areas + 4, yHead + 5, { width: COL.fin - COL.areas - 8, align: 'right', lineBreak: false });
+  doc.text('Activos', COL.areas + 4, yHead + 5, { width: COL.activos - COL.areas - 8, align: 'right', lineBreak: false });
+  doc.text('Útiles', COL.activos + 4, yHead + 5, { width: COL.fin - COL.activos - 8, align: 'right', lineBreak: false });
   doc.lineWidth(1.2).moveTo(M.left, yHead + HEAD_H - 8).lineTo(COL.fin, yHead + HEAD_H - 8).stroke();
   return yHead + HEAD_H;
 }
@@ -234,7 +241,9 @@ async function exportCustodiosPdf(req, res, next) {
     const args = q ? [`%${q}%`] : [];
     const [r, areasDe] = await Promise.all([
       pool.query(`
-        SELECT cu.id, cu.nombre, COUNT(a.id)::int AS activos
+        SELECT cu.id, cu.nombre,
+               COUNT(a.id) FILTER (WHERE a.tipo = 'AFT')::int  AS activos,
+               COUNT(a.id) FILTER (WHERE a.tipo = 'UTIL')::int AS utiles
         FROM custodios cu
         LEFT JOIN activos a ON a.custodio_id = cu.id
         ${cond}
@@ -245,7 +254,8 @@ async function exportCustodiosPdf(req, res, next) {
     const filas = r.rows.map((c) => ({
       nombre: c.nombre,
       areas: (areasDe.get(c.id) || []).join(', '),
-      activos: c.activos
+      activos: c.activos,
+      utiles: c.utiles
     }));
 
     const fecha = new Date().toISOString().slice(0, 10);
@@ -271,7 +281,8 @@ async function exportCustodiosPdf(req, res, next) {
       }
       doc.text(f.nombre, M.left + 4, y + 3, { width: COL.resp - M.left - 8, lineBreak: false });
       doc.text(f.areas || '—', COL.resp + 4, y + 3, { width: COL.areas - COL.resp - 8 });
-      doc.text(String(f.activos), COL.areas + 4, y + 3, { width: COL.fin - COL.areas - 8, align: 'right', lineBreak: false });
+      doc.text(String(f.activos), COL.areas + 4, y + 3, { width: COL.activos - COL.areas - 8, align: 'right', lineBreak: false });
+      doc.text(String(f.utiles), COL.activos + 4, y + 3, { width: COL.fin - COL.activos - 8, align: 'right', lineBreak: false });
       doc.lineWidth(0.5).strokeColor('#bbb')
         .moveTo(M.left, y + h - 2).lineTo(COL.fin, y + h - 2).stroke()
         .strokeColor('black');
