@@ -85,7 +85,12 @@ function soltar() {
       >
         <div class="dw-grip" @pointerdown="empezar" @pointermove="mover" @pointerup="soltar" @pointercancel="soltar">
           <span class="dw-handle"></span>
-          <div class="dw-head">
+          <!-- Sin título, sin subtítulo, sin slot y sin ✕ no hay nada que
+               enseñar arriba: la cabecera entera no se pinta. -->
+          <div
+            v-if="titulo || subtitulo || $slots['antes-titulo'] || !sinClose"
+            class="dw-head"
+          >
             <div class="dw-title">
               <slot name="antes-titulo" />
               <div class="dw-title-txt">

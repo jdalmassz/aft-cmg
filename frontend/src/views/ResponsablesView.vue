@@ -131,9 +131,9 @@ async function verActaPreview() {
 watch(actaSel, () => refrescarActa(false))
 onBeforeUnmount(() => { clearTimeout(tActa); mqMovil.removeEventListener('change', onMovil) })
 
-const tituloPreview = computed(() =>
-  tipoPreview.value === 'hoja' ? 'Responsables y Áreas' : 'Acta de responsabilidad material'
-)
+// El acta no lleva título en el cajón de la vista previa: el de al lado (el de
+// las opciones) ya lo dice. La hoja se abre sola, así que la suya sí.
+const tituloPreview = computed(() => (tipoPreview.value === 'hoja' ? 'Responsables y Áreas' : ''))
 // El acta va pegado a su cajón de opciones (440 = su ancho); la hoja de
 // responsables, que se abre sola, sigue como estaba.
 const extraPreview = computed(() => ({ '--dw-pegado': tipoPreview.value === 'hoja' ? '380px' : '440px' }))
