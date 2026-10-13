@@ -428,17 +428,20 @@ async function exportActaPdf(req, res, next) {
       y += 22;
     }
 
-    // Firmas al pie de la hoja.
+    // Firmas al pie de la hoja. La notificación no se rellena a mano: lleva HOY,
+    // la fecha en que se genera el documento (la misma del nombre del fichero).
+    const [aa, mm, dd] = fecha.split('-');
+    const fechaNotif = `${dd}/${mm}/${aa}`;
     const yFirma = doc.page.height - M.bottom - 56;
     doc.font('Helvetica').fontSize(10.5);
     doc.lineWidth(0.8).strokeColor('black');
     doc.moveTo(M.left, yFirma).lineTo(M.left + 200, yFirma).stroke();
     doc.moveTo(M.left + 260, yFirma).lineTo(M.left + W, yFirma).stroke();
     doc.text('Firma del responsable', M.left, yFirma + 6, { width: 200, align: 'center' });
-    doc.text('Fecha de notificación:', M.left + 260, yFirma + 6, { width: W - 260, align: 'center' });
+    doc.text(`Fecha de notificación: ${fechaNotif}`, M.left + 260, yFirma + 6, { width: W - 260, align: 'center' });
     doc.moveTo(M.left, yFirma + 44).lineTo(M.left + 200, yFirma + 44).stroke();
     doc.moveTo(M.left + 260, yFirma + 44).lineTo(M.left + W, yFirma + 44).stroke();
-    doc.text('Firma del Director', M.left, yFirma + 50, { width: 200, align: 'center' });
+    doc.text('Firma del Representante de Sucursal', M.left, yFirma + 50, { width: 200, align: 'center' });
     doc.text('Control Contable', M.left + 260, yFirma + 50, { width: W - 260, align: 'center' });
 
     doc.end();
