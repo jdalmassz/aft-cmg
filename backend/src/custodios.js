@@ -40,7 +40,9 @@ async function listCustodios(req, res, next) {
     const pool = db.getPool();
     const [r, areasDe] = await Promise.all([
       pool.query(`
-      SELECT cu.id, cu.nombre, cu.carnet, cu.cargo, cu.user_id, us.username, COUNT(a.id)::int AS activos
+      SELECT cu.id, cu.nombre, cu.carnet, cu.cargo, cu.user_id, us.username,
+             COUNT(a.id) FILTER (WHERE a.tipo = 'AFT')::int  AS activos,
+             COUNT(a.id) FILTER (WHERE a.tipo = 'UTIL')::int AS utiles
       FROM custodios cu
       LEFT JOIN activos a ON a.custodio_id = cu.id
       LEFT JOIN users us ON us.id = cu.user_id
@@ -67,7 +69,7 @@ async function createCustodio(req, res, next) {
       'INSERT INTO custodios (nombre, carnet, cargo, user_id) VALUES ($1, $2, $3, $4) RETURNING id, nombre, carnet, cargo, user_id',
       [nombre, datoTexto(req.body?.carnet), datoTexto(req.body?.cargo), req.body?.user_id || null]
     );
-    return res.status(201).json({ ...r.rows[0], activos: 0 });
+    return res.status(201).json({ ...r.rows[0], activos: 0, utiles: 0 });
   } catch (e) {
     if (e.code === '23505') return res.status(400).json({ error: e.constraint?.includes('user_id') ? 'Ese usuario ya está vinculado a otro responsable' : 'Ya existe un responsable con ese nombre' });
     next(e);

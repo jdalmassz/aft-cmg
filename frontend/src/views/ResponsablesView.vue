@@ -29,6 +29,9 @@ const filtrados = computed(() => {
 })
 
 const totalActivos = computed(() => lista.value.reduce((s, c) => s + c.activos, 0))
+const totalUtiles = computed(() => lista.value.reduce((s, c) => s + c.utiles, 0))
+// Para borrar hace falta no tener NI activos NI útiles (el servidor cuenta los dos).
+const conAsignacion = (c) => (c.activos || 0) + (c.utiles || 0) > 0
 
 async function cargar() {
   loading.value = true
@@ -69,11 +72,40 @@ async function verActa(c) {
   await preview.abrir(`/api/admin/custodios/${c.id}/acta/pdf`)
 }
 
+/*
+ * El acta de ARRIBA: un cajón con un desplegable para elegir la persona y, debajo,
+ * la vista previa de SU acta. Al cambiar la selección se vuelve a pedir el PDF
+ * (sólo se enseña el último, igual que en el resto de vistas previas).
+ */
+const actaSel = ref('')
+
+function pedirActaSel() {
+  const c = lista.value.find((x) => x.id === actaSel.value)
+  if (!c) return
+  tipoPreview.value = 'acta-sel'
+  actaNombre.value = c.nombre
+  preview.abrir(`/api/admin/custodios/${c.id}/acta/pdf`)
+}
+
+function abrirActa() {
+  const primero = filtrados.value[0] || lista.value[0]
+  if (!primero) { err('No hay responsables registrados'); return }
+  actaSel.value = primero.id
+  pedirActaSel()
+}
+
+const tituloPreview = computed(() =>
+  tipoPreview.value === 'hoja' ? 'Responsables y Áreas' : 'Acta de responsabilidad material'
+)
+// La hoja se queda pegada al cajón de opciones (que aquí no hay); el acta del
+// selector ocupa toda la pantalla, que es lo que pide para mirarla con comodidad.
+const extraPreview = computed(() => ({ '--dw-pegado': tipoPreview.value === 'hoja' ? '380px' : '0px' }))
+
 const nombreDescarga = computed(() => {
   const fecha = new Date().toISOString().slice(0, 10)
-  return tipoPreview.value === 'acta'
-    ? `Acta-responsabilidad-${actaNombre.value.replace(/\s+/g, '_')}-${fecha}.pdf`
-    : `Responsables-y-areas-${fecha}.pdf`
+  return tipoPreview.value === 'hoja'
+    ? `Responsables-y-areas-${fecha}.pdf`
+    : `Acta-responsabilidad-${actaNombre.value.replace(/\s+/g, '_')}-${fecha}.pdf`
 })
 
 function descargarPdf() {
@@ -132,8 +164,8 @@ async function guardar() {
 function eliminar() {
   const c = editando.value
   if (!c) return
-  if (c.activos > 0) {
-    err(`No se puede eliminar: ${c.nombre} tiene ${c.activos} activo(s) asignados`)
+  if (conAsignacion(c)) {
+    err(`No se puede eliminar: ${c.nombre} tiene ${c.activos} activo(s) y ${c.utiles} útil(es) asignados`)
     return
   }
   confirmar({
@@ -159,9 +191,12 @@ onMounted(cargar)
     <div class="head">
       <div>
         <h2>Responsables</h2>
-        <p class="muted">{{ lista.length }} responsable(s) · {{ totalActivos }} activo(s) asignado(s)</p>
+        <p class="muted">{{ lista.length }} responsable(s) · {{ totalActivos }} activo(s) y {{ totalUtiles }} útil(es) asignado(s)</p>
       </div>
       <span class="btns">
+        <button class="btn sec" title="Acta de responsabilidad material: elige la persona y mira la vista previa" @click="abrirActa">
+          <AppIcon name="file" :size="14" /> Acta
+        </button>
         <button class="btn sec" title="Hoja de responsables y sus áreas: vista previa, imprimirla o bajarla en PDF/Excel" @click="verHoja">
           <AppIcon name="printer" :size="14" /> Hoja responsables
         </button>
@@ -178,7 +213,7 @@ onMounted(cargar)
 
     <div v-else class="card table-wrap">
       <table class="tbl">
-        <thead><tr><th>Nombre</th><th>Áreas</th><th>Usuario</th><th>Activos</th><th></th></tr></thead>
+        <thead><tr><th>Nombre</th><th>Áreas</th><th>Usuario</th><th>Activos</th><th>Útiles</th><th></th></tr></thead>
         <tbody>
           <!-- Toda la fila abre el cajón de edición: no hay botones Editar/Eliminar. -->
           <tr v-for="c in filtrados" :key="c.id" class="fila" @click="abrirEditar(c)">
@@ -186,6 +221,7 @@ onMounted(cargar)
             <td class="muted">{{ (c.areas || []).join(', ') || '—' }}</td>
             <td><span v-if="c.username" class="usr"><AppIcon name="user-check" :size="13" /> {{ c.username }}</span><span v-else class="muted">—</span></td>
             <td><span class="badge" :class="c.activos ? 'ok' : 'warn'">{{ c.activos }}</span></td>
+            <td><span class="badge" :class="c.utiles ? 'ok' : ''">{{ c.utiles }}</span></td>
             <td class="acciones">
               <button class="btn sec sm" title="Acta de responsabilidad material: vista previa, imprimir o bajar en PDF" @click.stop="verActa(c)">
                 <AppIcon name="file" :size="14" /> Acta
@@ -193,7 +229,7 @@ onMounted(cargar)
             </td>
           </tr>
           <tr v-if="!filtrados.length">
-            <td colspan="5" class="vacio">No hay responsables{{ q ? ' que coincidan con la búsqueda' : '' }}.</td>
+            <td colspan="6" class="vacio">No hay responsables{{ q ? ' que coincidan con la búsqueda' : '' }}.</td>
           </tr>
         </tbody>
       </table>
@@ -221,7 +257,7 @@ onMounted(cargar)
         </select>
       </div>
       <template #pie>
-        <button v-if="editando" class="btn danger" :disabled="editando.activos > 0" :title="editando.activos > 0 ? 'Tiene activos asignados' : 'Eliminar responsable'" @click="eliminar">
+        <button v-if="editando" class="btn danger" :disabled="conAsignacion(editando)" :title="conAsignacion(editando) ? 'Tiene activos o útiles asignados' : 'Eliminar responsable'" @click="eliminar">
           <AppIcon name="trash" :size="15" /> Eliminar
         </button>
         <button class="btn sec" @click="mostrar = false">Cancelar</button>
@@ -230,7 +266,14 @@ onMounted(cargar)
     </Drawer>
 
     <!-- Vista previa de un PDF del servidor: hoja de responsables o acta de un responsable. -->
-    <Drawer :open="preview.abierta" :titulo="tipoPreview === 'acta' ? 'Acta de responsabilidad material' : 'Responsables y Áreas'" subtitulo="Tal como se imprimirá" :ancho="860" clase="preview-drawer" :extra="{ '--dw-pegado': '380px' }" :sinClose="true" @close="preview.cerrar">
+    <Drawer :open="preview.abierta" :titulo="tituloPreview" subtitulo="Tal como se imprimirá" :ancho="860" clase="preview-drawer" :extra="extraPreview" :sinClose="true" @close="preview.cerrar">
+      <!-- El acta de arriba: aquí se elige la persona y SU acta sale debajo. -->
+      <div v-if="tipoPreview === 'acta-sel'" class="elige-acta">
+        <label>Responsable</label>
+        <select v-model="actaSel" class="select" @change="pedirActaSel">
+          <option v-for="c in lista" :key="c.id" :value="c.id">{{ c.nombre }}</option>
+        </select>
+      </div>
       <div class="preview-caja">
         <iframe v-if="preview.url" ref="visorPdf" class="preview-iframe" :src="preview.url" title="Vista previa de la hoja"></iframe>
         <div v-else class="center"><span class="spinner"></span></div>
@@ -262,6 +305,9 @@ onMounted(cargar)
 .fila:hover { background: color-mix(in srgb, var(--primary) 5%, transparent); }
 
 /* Vista previa de la hoja: el documento dentro del cajón, con su papel gris. */
+.elige-acta { display: flex; align-items: center; gap: 10px; flex-shrink: 0; margin-bottom: 10px; }
+.elige-acta label { font-weight: 600; white-space: nowrap; }
+.elige-acta .select { flex: 1; }
 .preview-caja {
   flex: 1; min-height: 0;
   background: #e2e8f0; border: 1px solid var(--border); border-radius: 10px;

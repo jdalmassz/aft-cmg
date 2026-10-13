@@ -248,9 +248,10 @@ Elimina (solo rol `admin`). Devuelve `{ "ok": true }`.
 
 ## Admin (responsables / custodios) — solo rol `admin`
 
-- `GET /api/admin/custodios` → `[{ id, nombre, carnet, cargo, activos, areas }]`
-  (conteo de activos asignados; `areas` = etiquetas de las áreas de sus activos,
-  fijos y útiles, p. ej. `["Área 5 - FACTURACION"]`). `carnet` y `cargo` son los
+- `GET /api/admin/custodios` → `[{ id, nombre, carnet, cargo, activos, utiles, areas }]`
+  (`activos` = fijos `tipo='AFT'` asignados, `utiles` = `tipo='UTIL'`; `areas` =
+  etiquetas de las áreas de sus activos, fijos y útiles, p. ej.
+  `["Área 5 - FACTURACION"]`). `carnet` y `cargo` son los
   datos del trabajador que rellenan el acta; `null` si no están guardados.
 - `GET /api/admin/custodios/export/xlsx?q=` → Excel *Responsables y áreas*:
   `Responsable · Áreas · Activos · Útiles` (una fila por responsable; las áreas,
@@ -262,7 +263,7 @@ Elimina (solo rol `admin`). Devuelve `{ "ok": true }`.
   cargo del responsable puestos y los conteos reales de la BD en *Activos Fijos
   Tangibles* y *Útiles y Herramientas*. *Medios de Rotación* y *Medios Monetarios*
   salen en blanco (el sistema no los lleva).
-- `POST /api/admin/custodios` → `{ "nombre": "...", "carnet": "...", "cargo": "...", "user_id": null }` → `201` con `{ id, nombre, carnet, cargo, activos: 0 }`
+- `POST /api/admin/custodios` → `{ "nombre": "...", "carnet": "...", "cargo": "...", "user_id": null }` → `201` con `{ id, nombre, carnet, cargo, activos: 0, utiles: 0 }`
 - `PUT /api/admin/custodios/:id` → `{ "nombre": "...", "carnet": "...", "cargo": "...", "user_id": null }`
 - `DELETE /api/admin/custodios/:id` → `{ "ok": true }`; `400` si tiene activos asignados
 
