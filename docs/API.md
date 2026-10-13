@@ -261,8 +261,9 @@ Elimina (solo rol `admin`). Devuelve `{ "ok": true }`.
 - `GET /api/admin/custodios/:id/acta/pdf` → **Acta de Reconocimiento y Aceptación
   de Responsabilidad Material (Decreto Ley 249)** en PDF Carta: nombre, carnet y
   cargo del responsable puestos y, en *Activos Fijos Tangibles* y *Útiles y
-  Herramientas*, una **X si tiene** alguno (no la cantidad). *Medios de Rotación*
-  y *Medios Monetarios* no salen. Al pie: «Firma del Representante de Sucursal»
+  Herramientas*, una **X si tiene** alguno (no la cantidad). Los cuatro renglones
+  de la proforma siguen, pero *Medios de Rotación* y *Medios Monetarios* ya **no
+  tienen raya en blanco**. Al pie: «Firma del Representante de Sucursal»
   y «Fecha de notificación:» con la fecha en que se genera el documento, escrita
   **sobre la raya**.
 - `POST /api/admin/custodios` → `{ "nombre": "...", "carnet": "...", "cargo": "...", "user_id": null }` → `201` con `{ id, nombre, carnet, cargo, activos: 0, utiles: 0 }`

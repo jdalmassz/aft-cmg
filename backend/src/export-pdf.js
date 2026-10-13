@@ -38,6 +38,9 @@ function metaFrom(req, extra = {}) {
   return {
     entidad: ENTIDAD,
     util,
+    // El nombre del documento, para el título de la cabecera, el Autor del PDF y
+    // la línea de paginación (igual que el resto de hojas del sistema).
+    titulo: util ? 'Útiles y Herramientas en Uso — Conteo Físico' : 'Hoja para Realizar el Conteo Físico',
     sucursal: extra.sucursal || 'Camagüey',
     area: extra.area || '',
     ubicacion: extra.ubicacion || '',
@@ -75,11 +78,11 @@ function drawHeader(doc, meta) {
     y += 14;
   }
 
+  // MISMA cabecera que el resto de hojas del sistema: rótulos a la izquierda,
+  // título centrado en negrita y logo a la derecha (110 pt, como en la hoja de
+  // responsables y en el acta).
   doc.font('Helvetica-Bold').fontSize(12)
-    .text(
-      meta.util ? 'Útiles y Herramientas en Uso — Conteo Físico' : 'Hoja para Realizar el Conteo Físico',
-      M.left, y0 + 30, { width: COL.ruleEnd - M.left, align: 'center' }
-    );
+    .text(meta.titulo, M.left, y0 + 30, { width: COL.ruleEnd - M.left, align: 'center' });
   doc.font('Helvetica-Bold').fontSize(11)
     .text(`Período: ${meta.periodo}`, M.left, y0 + 58, {
       width: COL.ruleEnd - M.left, align: 'center'
@@ -87,7 +90,7 @@ function drawHeader(doc, meta) {
 
   if (fs.existsSync(LOGO)) {
     try {
-      doc.image(LOGO, COL.ruleEnd - 130, y0, { width: 130 });
+      doc.image(LOGO, COL.ruleEnd - 110, y0 - 4, { width: 110 });
     } catch (_) { /* logo opcional */ }
   }
 
@@ -166,12 +169,14 @@ function drawFooter(doc, y) {
   doc.text('Firma: ______________________', M.left + half, yy, { width: w, lineBreak: false });
 }
 
+// Mismo pie que el resto de hojas: «<nombre del documento> · Página N de M».
 function numerarPaginas(doc) {
   const { start, count } = doc.bufferedPageRange();
+  const etiqueta = doc._meta?.titulo ? `${doc._meta.titulo} · ` : '';
   for (let i = start; i < start + count; i++) {
     doc.switchToPage(i);
     doc.font('Helvetica').fontSize(8).fillColor('#555')
-      .text(`Página ${i - start + 1} de ${count}`, M.left, doc.page.height - M.bottom, {
+      .text(`${etiqueta}Página ${i - start + 1} de ${count}`, M.left, doc.page.height - M.bottom, {
         width: COL.ruleEnd - M.left, align: 'right', lineBreak: false
       });
     doc.fillColor('black');

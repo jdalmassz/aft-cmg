@@ -204,16 +204,25 @@ const COL = { resp: 245, areas: 480, activos: 528, fin: 572 }; // fin = borde de
 const ROW_H = 16;
 const HEAD_H = 22;
 
+function kvLine(doc, x, y, label, value) {
+  doc.font('Helvetica-Bold').fontSize(9).text(label, x, y, { lineBreak: false });
+  const lw = doc.widthOfString(label);
+  doc.font('Helvetica').text(' ' + (value || ''), x + lw, y, { lineBreak: false });
+}
+
+// MISMA cabecera que el resto de hojas del sistema (conteo, útiles…):
+// rótulos Entidad/Sucursal a la izquierda, título centrado en negrita 12 y
+// el logo de Procovar a la derecha (110 pt).
 function dibujarCabecera(doc) {
   const y0 = M.top;
-  doc.font('Helvetica-Bold').fontSize(12)
-    .text('Responsables y Áreas', M.left, y0, { width: COL.fin - M.left, align: 'center' });
-  doc.font('Helvetica').fontSize(9)
-    .text('PROCOVAR S.R.L. · Camagüey', M.left, y0 + 18, { width: COL.fin - M.left, align: 'center' });
+  kvLine(doc, M.left, y0, 'Entidad:', 'PROCOVAR S.R.L.');
+  kvLine(doc, M.left, y0 + 14, 'Sucursal:', 'Camagüey');
   if (fs.existsSync(LOGO)) {
     try { doc.image(LOGO, COL.fin - 110, y0 - 4, { width: 110 }); } catch (_) { /* logo opcional */ }
   }
-  const yHead = y0 + 44;
+  doc.font('Helvetica-Bold').fontSize(12)
+    .text('Responsables y Áreas', M.left, y0 + 30, { width: COL.fin - M.left, align: 'center' });
+  const yHead = y0 + 64;
   doc.font('Helvetica-Bold').fontSize(9);
   doc.text('Responsable', M.left + 4, yHead + 5, { lineBreak: false });
   doc.text('Áreas', COL.resp + 4, yHead + 5, { lineBreak: false });
@@ -380,15 +389,17 @@ async function exportActaPdf(req, res, next) {
     doc.pipe(res);
 
     const W = doc.page.width - M.left - M.right; // ancho útil
-    let y = M.top;
-
+    // MISMA cabecera que el resto de hojas del sistema: Entidad/Sucursal a la
+    // izquierda, título centrado en negrita 12 y logo a la derecha (110 pt).
+    const y0 = M.top;
+    kvLine(doc, M.left, y0, 'Entidad:', ACTA_ENTIDAD);
+    kvLine(doc, M.left, y0 + 14, 'Sucursal:', 'Camagüey');
     if (fs.existsSync(LOGO)) {
-      try { doc.image(LOGO, (doc.page.width - 150) / 2, y, { width: 150 }); y += 64; } catch (_) { /* logo opcional */ }
+      try { doc.image(LOGO, doc.page.width - M.right - 110, y0 - 4, { width: 110 }); } catch (_) { /* logo opcional */ }
     }
-
-    doc.font('Helvetica-Bold').fontSize(11)
-      .text(ACTA_TITULO, M.left, y, { width: W, align: 'center' });
-    y = doc.y + 14;
+    doc.font('Helvetica-Bold').fontSize(12)
+      .text(ACTA_TITULO, M.left, y0 + 30, { width: W, align: 'center' });
+    let y = doc.y + 14;
 
     // El primer párrafo lleva los datos del responsable en negrita dentro del
     // texto, como en la proforma original. PDFKit no mezcla fuentes en un solo
@@ -411,12 +422,14 @@ async function exportActaPdf(req, res, next) {
       .text('Los recursos materiales y/o financieros por los cuales me responsabilizo son:', M.left, y, { width: W });
     y = doc.y + 12;
 
-    // Sólo los dos que el sistema lleva, y con una X si tiene alguno: la cantidad
-    // no va en el acta. Medios de Rotación y Medios Monetarios se quitaron (las
-    // dos rayas en blanco que había debajo).
+    // Los CUATRO renglones de la proforma siguen ahí; lo que se quitó fue la
+    // raya en blanco de los dos que el sistema no lleva. Los dos primeros salen
+    // con una X si tienen alguno (la cantidad no va en el acta).
     const items = [
       { rotulo: 'Activos Fijos Tangibles:', valor: conteos.rows[0].fijos > 0 ? 'X' : '' },
-      { rotulo: 'Útiles y Herramientas:', valor: conteos.rows[0].utiles > 0 ? 'X' : '' }
+      { rotulo: 'Útiles y Herramientas:', valor: conteos.rows[0].utiles > 0 ? 'X' : '' },
+      { rotulo: 'Medios de Rotación:', valor: '' },
+      { rotulo: 'Medios Monetarios:', valor: '' }
     ];
     doc.font('Helvetica').fontSize(10.5);
     for (const it of items) {
@@ -430,7 +443,9 @@ async function exportActaPdf(req, res, next) {
     // que se genera el documento (la misma del nombre del fichero).
     const [aa, mm, dd] = fecha.split('-');
     const fechaNotif = `${dd}/${mm}/${aa}`;
-    const yFirma = doc.page.height - M.bottom - 56;
+    // 20 pt más arriba que antes: debajo queda el pie de paginación, igual que
+    // en el resto de hojas del sistema.
+    const yFirma = doc.page.height - M.bottom - 76;
     doc.font('Helvetica').fontSize(10.5);
     doc.lineWidth(0.8).strokeColor('black');
     doc.moveTo(M.left, yFirma).lineTo(M.left + 200, yFirma).stroke();
@@ -443,6 +458,7 @@ async function exportActaPdf(req, res, next) {
     doc.text('Firma del Representante de Sucursal', M.left, yFirma + 50, { width: 200, align: 'center' });
     doc.text('Control Contable', M.left + 260, yFirma + 50, { width: W - 260, align: 'center' });
 
+    numerarPaginas(doc, 'Acta de responsabilidad material');
     doc.end();
   } catch (e) { next(e); }
 }
