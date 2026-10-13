@@ -174,13 +174,14 @@ mismo formato que la hoja original** `20260923-0849.pdf` (*Hoja para Realizar
 el Conteo Físico*):
 
 - Cabecera: Organismo / Entidad / Reeup / Unidad, título centrado, Período,
-  Conteo, Estado, logo EXBER y «Generado por» (usuario autenticado).
+  Conteo, Estado y logo EXBER. **Sin «Generado por»**: ese nombre no sale en la
+  hoja (sólo queda como Autor del fichero PDF).
 - Columnas: `No. Invent.`, `Descripción`, `Existe`, `Falta` (líneas en blanco
   para marcar a mano).
 - Filas agrupadas por **Área** (`ubicacion_id - nombre`).
 - Pie con firmas: Responsable del Conteo Físico y Responsable del Área.
 - Parámetros de cabecera opcionales por query: `organismo`, `entidad`, `reeup`,
-  `unidad`, `conteo`, `periodo`, `estado`, `generadoPor`.
+  `unidad`, `conteo` (por defecto `100%`), `periodo`, `estado`, `generadoPor`.
 - Nombre de fichero: `Conteo-fisico-YYYY-MM-DD.pdf`.
 - Devuelve el binario, no JSON.
 

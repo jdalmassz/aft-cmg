@@ -47,7 +47,7 @@ function metaFrom(req, extra = {}) {
     responsableFiltro: extra.responsable || '',
     // El que se eligió a mano para firmar como «Responsable del Área».
     responsableAreaSel: extra.responsableAreaSel || '',
-    conteo: q.conteo || '',
+    conteo: q.conteo || '100%',
     periodo: q.periodo || periodoActual(),
     // El responsable enganchado a su usuario manda sobre el nombre de la cuenta: en
     // la hoja hacen falta nombre y apellidos, no el usuario con el que entra.
@@ -91,23 +91,13 @@ function drawHeader(doc, meta) {
     } catch (_) { /* logo opcional */ }
   }
 
-  // Quién y dónde: el ÁREA a la izquierda y «Generado por:» a la derecha, en la
-  // MISMA línea. Antes el «Generado por:» iba en una línea propia justo debajo del
-  // período, y con un nombre largo se quedaba pegado a él. El responsable de los
-  // activos no sale aquí: se ve en la firma de abajo.
-  // La línea se reserva aunque no haya área, para que la tabla no suba ni baje.
+  // Sólo el ÁREA en esta línea (el «Generado por:» se quitó de la hoja). La
+  // línea se reserva aunque no haya área, para que la tabla no suba ni baje.
   let yCols = y0 + 92;
   const yLinea = yCols - 6;
-  const tGen = meta.generadoPor ? `Generado por: ${meta.generadoPor}` : '';
   doc.font('Helvetica-Bold').fontSize(9);
-  let yGen = yLinea;
-  if (meta.area && tGen &&
-      doc.widthOfString('Área: ' + meta.area) + 16 + doc.widthOfString(tGen) > COL.ruleEnd - M.left) {
-    yGen = yLinea + 14; // no caben juntos: el «Generado por:» baja una línea
-  }
   if (meta.area) kvLine(doc, M.left, yLinea, 'Área:', meta.area);
-  if (tGen) doc.text(tGen, M.left, yGen, { width: COL.ruleEnd - M.left, align: 'right', lineBreak: false });
-  yCols = Math.max(yLinea, yGen) + 26;
+  yCols = yLinea + 26;
   doc.font('Helvetica-Bold').fontSize(9);
   doc.text('No. Invent.', M.left, yCols, { width: COL.codigoFin - M.left, align: 'right', lineBreak: false });
   doc.text('Descripción', COL.desc, yCols, { lineBreak: false });
@@ -410,8 +400,9 @@ async function exportActivosPdf(req, res, next) {
       // Quien se eligió a mano para firmar como responsable del área.
       req.query.resp_area ? pool.query('SELECT nombre FROM custodios WHERE id = $1', [req.query.resp_area]) : null,
       /*
-       * QUIEN GENERÓ LA HOJA, para el «Generado por:» de la cabecera y el Autor del
-       * PDF. No va en la firma: el responsable del conteo se escribe a mano.
+       * QUIEN GENERÓ LA HOJA, sólo para el Autor del PDF: el «Generado por:» de la
+       * cabecera se quitó de la hoja. No va en la firma: el responsable del conteo
+       * se escribe a mano.
        *
        * Sale del RESPONSABLE enganchado a su usuario (`custodios.user_id`) y no del
        * campo `nombre` de la cuenta, porque ahí está el nombre con el que entra —
