@@ -149,7 +149,7 @@ async function exportCustodiosXlsx(req, res, next) {
     const columnas = [
       { header: 'Responsable', width: 40 },
       { header: 'Áreas', width: 55 },
-      { header: 'Activos', width: 10 },
+      { header: 'AFT', width: 10 },
       { header: 'Útiles', width: 10 }
     ];
     columnas.forEach((c, i) => { ws.getColumn(i + 1).width = c.width; });
@@ -186,7 +186,7 @@ async function exportCustodiosXlsx(req, res, next) {
 /**
  * PDF «Responsables y áreas»: la MISMA hoja que el Excel, en papel Carta.
  * Cabecera con el logo y la entidad (igual que el resto de hojas del sistema),
- * tabla de cuatro columnas (Responsable · Áreas · Activos · Útiles) y
+ * tabla de cuatro columnas (Responsable · Áreas · AFT · Útiles) y
  * paginación con la página al pie.
  */
 // Carta 612x792
@@ -198,7 +198,7 @@ const M = { left: 40, right: 40, top: 36, bottom: 40 };
  * 142 y con `areas: 380` 167, así que ambas se partían y la segunda línea se
  * montaba en la fila de abajo. Ahora quedan 197 y 227: el nombre cabe en una
  * línea y las áreas, si no caben, crecen la fila (se mide abajo). Las DOS
- * últimas columnas son numéricas: Activos (fijos) y Útiles.
+ * últimas columnas son numéricas: AFT (fijos) y Útiles.
  */
 const COL = { resp: 245, areas: 480, activos: 528, fin: 572 }; // fin = borde derecho de la tabla
 const ROW_H = 16;
@@ -217,7 +217,7 @@ function dibujarCabecera(doc) {
   doc.font('Helvetica-Bold').fontSize(9);
   doc.text('Responsable', M.left + 4, yHead + 5, { lineBreak: false });
   doc.text('Áreas', COL.resp + 4, yHead + 5, { lineBreak: false });
-  doc.text('Activos', COL.areas + 4, yHead + 5, { width: COL.activos - COL.areas - 8, align: 'right', lineBreak: false });
+  doc.text('AFT', COL.areas + 4, yHead + 5, { width: COL.activos - COL.areas - 8, align: 'right', lineBreak: false });
   doc.text('Útiles', COL.activos + 4, yHead + 5, { width: COL.fin - COL.activos - 8, align: 'right', lineBreak: false });
   doc.lineWidth(1.2).moveTo(M.left, yHead + HEAD_H - 8).lineTo(COL.fin, yHead + HEAD_H - 8).stroke();
   return yHead + HEAD_H;
@@ -411,25 +411,23 @@ async function exportActaPdf(req, res, next) {
       .text('Los recursos materiales y/o financieros por los cuales me responsabilizo son:', M.left, y, { width: W });
     y = doc.y + 12;
 
-    // Los dos primeros huecos salen con el conteo real de la BD; los otros dos
-    // quedan en blanco (Medios de Rotación y Medios Monetarios).
+    // Sólo los dos que el sistema lleva, y con una X si tiene alguno: la cantidad
+    // no va en el acta. Medios de Rotación y Medios Monetarios se quitaron (las
+    // dos rayas en blanco que había debajo).
     const items = [
-      { rotulo: 'Activos Fijos Tangibles:', valor: String(conteos.rows[0].fijos) },
-      { rotulo: 'Útiles y Herramientas:', valor: String(conteos.rows[0].utiles) },
-      { rotulo: 'Medios de Rotación:', valor: '' },
-      { rotulo: 'Medios Monetarios:', valor: '' }
+      { rotulo: 'Activos Fijos Tangibles:', valor: conteos.rows[0].fijos > 0 ? 'X' : '' },
+      { rotulo: 'Útiles y Herramientas:', valor: conteos.rows[0].utiles > 0 ? 'X' : '' }
     ];
     doc.font('Helvetica').fontSize(10.5);
     for (const it of items) {
       doc.text(it.rotulo, M.left, y, { lineBreak: false });
-      const xDato = M.left + doc.widthOfString(it.rotulo) + 8;
-      if (it.valor) doc.text(it.valor, xDato, y, { lineBreak: false });
-      else guion(doc, xDato, y + 11, 160);
+      if (it.valor) doc.text(it.valor, M.left + doc.widthOfString(it.rotulo) + 8, y, { lineBreak: false });
       y += 22;
     }
 
-    // Firmas al pie de la hoja. La notificación no se rellena a mano: lleva HOY,
-    // la fecha en que se genera el documento (la misma del nombre del fichero).
+    // Firmas al pie de la hoja. La fecha de notificación va ESCRITA SOBRE la raya
+    // (donde iría a mano lo que se anota), con su rótulo debajo: es la fecha en
+    // que se genera el documento (la misma del nombre del fichero).
     const [aa, mm, dd] = fecha.split('-');
     const fechaNotif = `${dd}/${mm}/${aa}`;
     const yFirma = doc.page.height - M.bottom - 56;
@@ -437,8 +435,9 @@ async function exportActaPdf(req, res, next) {
     doc.lineWidth(0.8).strokeColor('black');
     doc.moveTo(M.left, yFirma).lineTo(M.left + 200, yFirma).stroke();
     doc.moveTo(M.left + 260, yFirma).lineTo(M.left + W, yFirma).stroke();
+    doc.text(fechaNotif, M.left + 260, yFirma - 17, { width: W - 260, align: 'center', lineBreak: false });
     doc.text('Firma del responsable', M.left, yFirma + 6, { width: 200, align: 'center' });
-    doc.text(`Fecha de notificación: ${fechaNotif}`, M.left + 260, yFirma + 6, { width: W - 260, align: 'center' });
+    doc.text('Fecha de notificación:', M.left + 260, yFirma + 6, { width: W - 260, align: 'center' });
     doc.moveTo(M.left, yFirma + 44).lineTo(M.left + 200, yFirma + 44).stroke();
     doc.moveTo(M.left + 260, yFirma + 44).lineTo(M.left + W, yFirma + 44).stroke();
     doc.text('Firma del Representante de Sucursal', M.left, yFirma + 50, { width: 200, align: 'center' });

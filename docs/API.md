@@ -254,15 +254,17 @@ Elimina (solo rol `admin`). Devuelve `{ "ok": true }`.
   `["Área 5 - FACTURACION"]`). `carnet` y `cargo` son los
   datos del trabajador que rellenan el acta; `null` si no están guardados.
 - `GET /api/admin/custodios/export/xlsx?q=` → Excel *Responsables y áreas*:
-  `Responsable · Áreas · Activos · Útiles` (una fila por responsable; las áreas,
-  separadas por coma; `Activos` = fijos `tipo='AFT'`, `Útiles` = `tipo='UTIL'`;
+  `Responsable · Áreas · AFT · Útiles` (una fila por responsable; las áreas,
+  separadas por coma; `AFT` = fijos `tipo='AFT'`, `Útiles` = `tipo='UTIL'`;
   `q` filtra por nombre)
 - `GET /api/admin/custodios/export/pdf?q=` → el mismo listado en PDF Carta
 - `GET /api/admin/custodios/:id/acta/pdf` → **Acta de Reconocimiento y Aceptación
   de Responsabilidad Material (Decreto Ley 249)** en PDF Carta: nombre, carnet y
-  cargo del responsable puestos y los conteos reales de la BD en *Activos Fijos
-  Tangibles* y *Útiles y Herramientas*. *Medios de Rotación* y *Medios Monetarios*
-  salen en blanco (el sistema no los lleva).
+  cargo del responsable puestos y, en *Activos Fijos Tangibles* y *Útiles y
+  Herramientas*, una **X si tiene** alguno (no la cantidad). *Medios de Rotación*
+  y *Medios Monetarios* no salen. Al pie: «Firma del Representante de Sucursal»
+  y «Fecha de notificación:» con la fecha en que se genera el documento, escrita
+  **sobre la raya**.
 - `POST /api/admin/custodios` → `{ "nombre": "...", "carnet": "...", "cargo": "...", "user_id": null }` → `201` con `{ id, nombre, carnet, cargo, activos: 0, utiles: 0 }`
 - `PUT /api/admin/custodios/:id` → `{ "nombre": "...", "carnet": "...", "cargo": "...", "user_id": null }`
 - `DELETE /api/admin/custodios/:id` → `{ "ok": true }`; `400` si tiene activos asignados

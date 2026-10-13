@@ -251,7 +251,7 @@ onMounted(cargar)
 
     <div v-else class="card table-wrap">
       <table class="tbl">
-        <thead><tr><th>Nombre</th><th>Áreas</th><th>Usuario</th><th>Activos</th><th>Útiles</th></tr></thead>
+        <thead><tr><th>Nombre</th><th>Áreas</th><th>Usuario</th><th>AFT</th><th>Útiles</th></tr></thead>
         <tbody>
           <!-- Toda la fila abre el cajón de edición: no hay botones Editar/Eliminar. -->
           <tr v-for="c in filtrados" :key="c.id" class="fila" @click="abrirEditar(c)">
