@@ -531,18 +531,18 @@ async function previsualizar() {
   await preview.abrir('/api/activos/export/pdf' + (qs ? '?' + qs : ''))
 }
 
-// `forzar` = pedirla siempre (al abrir el cajón o con el botón). Sin forzar sólo
-// se refresca si la hoja sigue abierta y cambiaron los parámetros: si no, un
-// cambio no debería reabrirla si la persona la acababa de cerrar.
+// `forzar` = pedirla siempre (al abrir el cajón o con el botón). Elegir área o
+// responsable la pide SOLA: la primera al instante (no había nada cargado) y un
+// cambio ya cargado a los 350 ms (como en el resto de vistas previas). El
+// botón se queda para volver a verla si la persona la cerró sin cambiar nada.
 function refrescarPreview(forzar) {
   // Sin área + responsable no se pide nada: la hoja no existe todavía.
   if (!listoParaPdf.value) { qsPreview = ''; preview.cerrar(); return }
   if (enMovil.value || !conteoAbierto.value) return
-  if (!forzar && !preview.abierta) return
   const qs = paramsConteo().toString()
   if (!forzar && qs === qsPreview) return
   clearTimeout(tPreview)
-  if (forzar) previsualizar()
+  if (forzar || !qsPreview) previsualizar()
   else tPreview = setTimeout(previsualizar, 350)
 }
 watch(conteo, () => refrescarPreview(false), { deep: true })
@@ -901,7 +901,7 @@ onMounted(() => {
       </template>
     </Drawer>
 
-    <Drawer :open="preview.abierta" titulo="Vista previa de la hoja" subtitulo="Tal como se imprimirá" :ancho="860" clase="preview-drawer" :extra="{ '--dw-pegado': '440px' }" :sinClose="true" @close="preview.cerrar">
+    <Drawer :open="preview.abierta" :ancho="860" clase="preview-drawer" :extra="{ '--dw-pegado': '440px' }" :sinClose="true" @close="preview.cerrar">
       <div class="preview-caja">
         <iframe v-if="preview.url" ref="visorPdf" class="preview-iframe" :src="preview.url" title="Vista previa de la hoja de conteo"></iframe>
         <div v-else class="center"><span class="spinner"></span></div>
