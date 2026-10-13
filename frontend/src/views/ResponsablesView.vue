@@ -107,11 +107,10 @@ function refrescarActa(forzar) {
 }
 
 function abrirActa() {
-  const primero = filtrados.value[0] || lista.value[0]
-  if (!primero) { err('No hay responsables registrados'); return }
-  actaSel.value = primero.id
+  // Sin persona preseleccionada: el cajón se abre vacío y quien lo usa elige
+  // la suya (así no se lleva el acta del primero por accidente).
+  actaSel.value = ''
   actaAbierto.value = true
-  refrescarActa(true)
 }
 
 // Cerrar el cajón de opciones se lleva el acta con él (son la misma cosa). El
@@ -303,9 +302,11 @@ onMounted(cargar)
       <div class="form-grid una">
         <div class="field"><label>Responsable</label>
           <select v-model="actaSel" class="select">
+            <option value="">Elige la persona</option>
             <option v-for="c in lista" :key="c.id" :value="c.id">{{ c.nombre }}</option>
           </select>
-          <small class="muted">El acta sale con su nombre, su carnet y su cargo, y los conteos de la BD. Si no tiene carnet ni cargo guardados, esos huecos se rellenan a mano.</small>
+          <small v-if="!actaSel" class="muted">Elige quién firma: la hoja se pide en cuanto selecciones.</small>
+          <small v-else class="muted">El acta sale con su nombre, su carnet y su cargo, y los conteos de la BD. Si no tiene carnet ni cargo guardados, esos huecos se rellenan a mano.</small>
         </div>
       </div>
       <template #pie>
