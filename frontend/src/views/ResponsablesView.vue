@@ -93,16 +93,16 @@ async function pedirActa() {
   await preview.abrir(`/api/admin/custodios/${c.id}/acta/pdf`)
 }
 
-// `forzar` = pedirla siempre (al abrir el cajón o con el botón). Sin forzar sólo
-// se refresca si el acta sigue abierto y cambió la persona: si no, un cambio no
-// debería reabrirla si la persona la acababa de cerrar.
+// `forzar` = pedirla siempre (con el botón «Vista previa»). Elegir persona la
+// pide SOLA, sin esperar a nada: la primera, en cuanto se elige; al cambiar,
+// a los 350 ms (como en el resto de vistas previas). El botón se queda para
+// volver a verla si la persona la cerró sin cambiarse de nombre.
 function refrescarActa(forzar) {
   if (!actaSel.value) { idActa = ''; preview.cerrar(); return }
-  if (enMovil.value || !actaAbierto.value) return
-  if (!forzar && !preview.abierta) return
+  if (!actaAbierto.value) return
   if (!forzar && String(actaSel.value) === idActa) return
   clearTimeout(tActa)
-  if (forzar) pedirActa()
+  if (forzar || !idActa) pedirActa()
   else tActa = setTimeout(pedirActa, 350)
 }
 
