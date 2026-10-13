@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { api } from '../api'
 import AppIcon from '../components/AppIcon.vue'
 import Drawer from '../components/Drawer.vue'
@@ -66,40 +66,78 @@ async function verHoja() {
   await preview.abrir('/api/admin/custodios/export/pdf' + (filtrosHoja() ? '?' + filtrosHoja() : ''))
 }
 
-async function verActa(c) {
-  tipoPreview.value = 'acta'
-  actaNombre.value = c.nombre
-  await preview.abrir(`/api/admin/custodios/${c.id}/acta/pdf`)
-}
-
 /*
- * El acta de ARRIBA: un cajón con un desplegable para elegir la persona y, debajo,
- * la vista previa de SU acta. Al cambiar la selección se vuelve a pedir el PDF
- * (sólo se enseña el último, igual que en el resto de vistas previas).
+ * El acta de ARRIBA, montada como la hoja de conteo de inventario: un cajón de
+ * OPCIONES con el desplegable de la persona y, PEGADO a su izquierda, la vista
+ * previa de SU acta. Se pide al abrir el cajón, se vuelve a pedir sola al
+ * cambiar de persona (350 ms, sólo si cambió) y cerrar las opciones se lleva
+ * la hoja consigo. En móvil no cabe al lado: allí manda el botón «Vista previa».
  */
+const actaAbierto = ref(false)
 const actaSel = ref('')
 
-function pedirActaSel() {
+const mqMovil = window.matchMedia('(max-width: 640px)')
+const enMovil = ref(mqMovil.matches)
+const onMovil = (e) => { enMovil.value = e.matches }
+mqMovil.addEventListener('change', onMovil)
+
+let tActa = null
+let idActa = ''
+
+async function pedirActa() {
   const c = lista.value.find((x) => x.id === actaSel.value)
   if (!c) return
   tipoPreview.value = 'acta-sel'
   actaNombre.value = c.nombre
-  preview.abrir(`/api/admin/custodios/${c.id}/acta/pdf`)
+  idActa = String(actaSel.value)
+  await preview.abrir(`/api/admin/custodios/${c.id}/acta/pdf`)
+}
+
+// `forzar` = pedirla siempre (al abrir el cajón o con el botón). Sin forzar sólo
+// se refresca si el acta sigue abierto y cambió la persona: si no, un cambio no
+// debería reabrirla si la persona la acababa de cerrar.
+function refrescarActa(forzar) {
+  if (!actaSel.value) { idActa = ''; preview.cerrar(); return }
+  if (enMovil.value || !actaAbierto.value) return
+  if (!forzar && !preview.abierta) return
+  if (!forzar && String(actaSel.value) === idActa) return
+  clearTimeout(tActa)
+  if (forzar) pedirActa()
+  else tActa = setTimeout(pedirActa, 350)
 }
 
 function abrirActa() {
   const primero = filtrados.value[0] || lista.value[0]
   if (!primero) { err('No hay responsables registrados'); return }
   actaSel.value = primero.id
-  pedirActaSel()
+  actaAbierto.value = true
+  refrescarActa(true)
 }
+
+// Cerrar el cajón de opciones se lleva el acta con él (son la misma cosa). El
+// Escape cierra LOS DOS a la vez: cada cajón escucha por su cuenta.
+function cerrarActa() {
+  actaAbierto.value = false
+  preview.cerrar()
+}
+
+// Botón «Vista previa»: se habilita en cuanto hay persona elegida. En móvil las
+// dos no caben apiladas, al abrir la hoja se van las opciones.
+async function verActaPreview() {
+  if (!actaSel.value) return
+  await pedirActa()
+  if (enMovil.value && preview.abierta) actaAbierto.value = false
+}
+
+watch(actaSel, () => refrescarActa(false))
+onBeforeUnmount(() => { clearTimeout(tActa); mqMovil.removeEventListener('change', onMovil) })
 
 const tituloPreview = computed(() =>
   tipoPreview.value === 'hoja' ? 'Responsables y Áreas' : 'Acta de responsabilidad material'
 )
-// La hoja se queda pegada al cajón de opciones (que aquí no hay); el acta del
-// selector ocupa toda la pantalla, que es lo que pide para mirarla con comodidad.
-const extraPreview = computed(() => ({ '--dw-pegado': tipoPreview.value === 'hoja' ? '380px' : '0px' }))
+// El acta va pegado a su cajón de opciones (440 = su ancho); la hoja de
+// responsables, que se abre sola, sigue como estaba.
+const extraPreview = computed(() => ({ '--dw-pegado': tipoPreview.value === 'hoja' ? '380px' : '440px' }))
 
 const nombreDescarga = computed(() => {
   const fecha = new Date().toISOString().slice(0, 10)
@@ -213,7 +251,7 @@ onMounted(cargar)
 
     <div v-else class="card table-wrap">
       <table class="tbl">
-        <thead><tr><th>Nombre</th><th>Áreas</th><th>Usuario</th><th>Activos</th><th>Útiles</th><th></th></tr></thead>
+        <thead><tr><th>Nombre</th><th>Áreas</th><th>Usuario</th><th>Activos</th><th>Útiles</th></tr></thead>
         <tbody>
           <!-- Toda la fila abre el cajón de edición: no hay botones Editar/Eliminar. -->
           <tr v-for="c in filtrados" :key="c.id" class="fila" @click="abrirEditar(c)">
@@ -222,14 +260,9 @@ onMounted(cargar)
             <td><span v-if="c.username" class="usr"><AppIcon name="user-check" :size="13" /> {{ c.username }}</span><span v-else class="muted">—</span></td>
             <td><span class="badge" :class="c.activos ? 'ok' : 'warn'">{{ c.activos }}</span></td>
             <td><span class="badge" :class="c.utiles ? 'ok' : ''">{{ c.utiles }}</span></td>
-            <td class="acciones">
-              <button class="btn sec sm" title="Acta de responsabilidad material: vista previa, imprimir o bajar en PDF" @click.stop="verActa(c)">
-                <AppIcon name="file" :size="14" /> Acta
-              </button>
-            </td>
           </tr>
           <tr v-if="!filtrados.length">
-            <td colspan="6" class="vacio">No hay responsables{{ q ? ' que coincidan con la búsqueda' : '' }}.</td>
+            <td colspan="5" class="vacio">No hay responsables{{ q ? ' que coincidan con la búsqueda' : '' }}.</td>
           </tr>
         </tbody>
       </table>
@@ -265,15 +298,27 @@ onMounted(cargar)
       </template>
     </Drawer>
 
+    <!-- Acta: cajón de opciones (quién firma) con su hoja pegada al lado izquierdo. -->
+    <Drawer :open="actaAbierto" titulo="Acta de responsabilidad material" subtitulo="Elige la persona" @close="cerrarActa">
+      <div class="form-grid una">
+        <div class="field"><label>Responsable</label>
+          <select v-model="actaSel" class="select">
+            <option v-for="c in lista" :key="c.id" :value="c.id">{{ c.nombre }}</option>
+          </select>
+          <small class="muted">El acta sale con su nombre, su carnet y su cargo, y los conteos de la BD. Si no tiene carnet ni cargo guardados, esos huecos se rellenan a mano.</small>
+        </div>
+      </div>
+      <template #pie>
+        <button class="btn sec" @click="cerrarActa">Cancelar</button>
+        <button class="btn sec" :disabled="preview.cargando || !actaSel" title="Ver el acta antes de exportarlo" @click="verActaPreview">
+          <AppIcon name="eye" :size="15" /> {{ preview.cargando ? 'Generando…' : 'Vista previa' }}
+        </button>
+        <button class="btn" :disabled="!preview.url" @click="descargarPdf"><AppIcon name="file" :size="15" /> PDF</button>
+      </template>
+    </Drawer>
+
     <!-- Vista previa de un PDF del servidor: hoja de responsables o acta de un responsable. -->
     <Drawer :open="preview.abierta" :titulo="tituloPreview" subtitulo="Tal como se imprimirá" :ancho="860" clase="preview-drawer" :extra="extraPreview" :sinClose="true" @close="preview.cerrar">
-      <!-- El acta de arriba: aquí se elige la persona y SU acta sale debajo. -->
-      <div v-if="tipoPreview === 'acta-sel'" class="elige-acta">
-        <label>Responsable</label>
-        <select v-model="actaSel" class="select" @change="pedirActaSel">
-          <option v-for="c in lista" :key="c.id" :value="c.id">{{ c.nombre }}</option>
-        </select>
-      </div>
       <div class="preview-caja">
         <iframe v-if="preview.url" ref="visorPdf" class="preview-iframe" :src="preview.url" title="Vista previa de la hoja"></iframe>
         <div v-else class="center"><span class="spinner"></span></div>
@@ -297,7 +342,6 @@ onMounted(cargar)
 .search { max-width: 320px; }
 .center { display: grid; place-items: center; padding: 60px; }
 .err { color: var(--danger); font-weight: 600; }
-.acciones { text-align: right; white-space: nowrap; }
 .vacio { text-align: center; color: var(--muted); padding: 28px 12px; }
 .vinculo { margin-top: 12px; }
 .usr { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; color: var(--primary-dark); }
