@@ -95,7 +95,7 @@ function editarDrawer() {
   // conserva cruda aparte para no perderla al guardar.
   const iso = aIso(a.fecha_adquisicion)
   formulario.value = {
-    codigo: a.codigo || '', descripcion: a.descripcion, marca_id: a.marca_id || '',
+    codigo: a.codigo || '', descripcion: a.descripcion, marca: a.marca || '',
     modelo: a.modelo || '', valor_cup: a.valor_cup ?? '', valor_usd: a.valor_usd ?? '',
     categoria_id: a.categoria_id || '', sucursal_id: a.sucursal_id || 1,
     fecha_adquisicion: iso, fecha_cruda: iso ? '' : (a.fecha_adquisicion || ''),
@@ -213,7 +213,7 @@ const chips = computed(() => {
 
 function emptyForm() {
   return {
-    codigo: '', descripcion: '', marca_id: '', modelo: '', valor_cup: '', valor_usd: '',
+    codigo: '', descripcion: '', marca: '', modelo: '', valor_cup: '', valor_usd: '',
     categoria_id: '', sucursal_id: 1, fecha_adquisicion: '', fecha_cruda: '', area_id: '',
     custodio_id: '', estado: 'ACTIVO', comentarios: ''
   }
@@ -347,7 +347,10 @@ async function guardar() {
     // La ubicación NO se manda: la decide el servidor con el área y el responsable
     // (así no hay forma de guardar un activo en una ubicación que no le toca).
     delete body.ubicacion_id
-    for (const k of ['marca_id', 'categoria_id', 'sucursal_id', 'area_id', 'custodio_id']) {
+    // La marca va como TEXTO: el servidor la busca y la crea si hace falta
+    // (mismo trato que en útiles; ver `resolverMarca`).
+    body.marca = (body.marca || '').trim() || null
+    for (const k of ['categoria_id', 'sucursal_id', 'area_id', 'custodio_id']) {
       body[k] = body[k] ? Number(body[k]) : null
     }
     for (const k of ['valor_cup', 'valor_usd']) {
@@ -788,9 +791,7 @@ onMounted(() => {
               <select v-model="formulario.estado" class="select"><option v-for="e in ESTADOS" :key="e" :value="e">{{ e }}</option></select>
             </div>
             <div class="field full"><label>Descripción *</label><input v-model="formulario.descripcion" class="input" required /></div>
-            <div class="field"><label>Marca</label>
-              <select v-model="formulario.marca_id" class="select"><option value="">—</option><option v-for="m in catalogo.marcas" :key="m.id" :value="m.id">{{ m.nombre }}</option></select>
-            </div>
+            <div class="field"><label>Marca</label><input v-model="formulario.marca" class="input" placeholder="Se escribe; si no existe, se crea" /></div>
             <div class="field"><label>Modelo</label><input v-model="formulario.modelo" class="input" /></div>
             <div class="field"><label>Categoría</label>
               <select v-model="formulario.categoria_id" class="select"><option value="">—</option><option v-for="c in catalogo.categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
@@ -850,9 +851,7 @@ onMounted(() => {
           <select v-model="formulario.estado" class="select"><option v-for="e in ESTADOS" :key="e" :value="e">{{ e }}</option></select>
         </div>
         <div class="field full"><label>Descripción *</label><input v-model="formulario.descripcion" class="input" required /></div>
-        <div class="field"><label>Marca</label>
-          <select v-model="formulario.marca_id" class="select"><option value="">—</option><option v-for="m in catalogo.marcas" :key="m.id" :value="m.id">{{ m.nombre }}</option></select>
-        </div>
+        <div class="field"><label>Marca</label><input v-model="formulario.marca" class="input" placeholder="Se escribe; si no existe, se crea" /></div>
         <div class="field"><label>Modelo</label><input v-model="formulario.modelo" class="input" /></div>
         <div class="field"><label>Categoría</label>
           <select v-model="formulario.categoria_id" class="select"><option value="">—</option><option v-for="c in catalogo.categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option></select>
