@@ -109,6 +109,7 @@ async function bootstrap() {
   adm.get('/custodios', custodios.listCustodios);
   adm.get('/custodios/export/xlsx', custodios.exportCustodiosXlsx);
   adm.get('/custodios/export/pdf', custodios.exportCustodiosPdf);
+  adm.get('/custodios/actas/pdf', custodios.exportActasPdf);
   adm.get('/custodios/:id/acta/pdf', custodios.exportActaPdf);
   adm.post('/custodios', custodios.createCustodio);
   adm.put('/custodios/:id', custodios.updateCustodio);

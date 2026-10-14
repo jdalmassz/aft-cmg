@@ -84,7 +84,19 @@ mqMovil.addEventListener('change', onMovil)
 let tActa = null
 let idActa = ''
 
+// El «todas» no es un id: es la opción del desplegable que pide el PDF con una
+// acta por página para todos los responsables (el buscador filtra quién entra).
+const ACTA_TODAS = '__todas__'
+
 async function pedirActa() {
+  if (actaSel.value === ACTA_TODAS) {
+    tipoPreview.value = 'actas-todas'
+    actaNombre.value = ''
+    idActa = ACTA_TODAS
+    const qs = filtrosHoja()
+    await preview.abrir('/api/admin/custodios/actas/pdf' + (qs ? '?' + qs : ''))
+    return
+  }
   const c = lista.value.find((x) => x.id === actaSel.value)
   if (!c) return
   tipoPreview.value = 'acta-sel'
@@ -140,9 +152,9 @@ const extraPreview = computed(() => ({ '--dw-pegado': tipoPreview.value === 'hoj
 
 const nombreDescarga = computed(() => {
   const fecha = new Date().toISOString().slice(0, 10)
-  return tipoPreview.value === 'hoja'
-    ? `Responsables-y-areas-${fecha}.pdf`
-    : `Acta-responsabilidad-${actaNombre.value.replace(/\s+/g, '_')}-${fecha}.pdf`
+  if (tipoPreview.value === 'hoja') return `Responsables-y-areas-${fecha}.pdf`
+  if (tipoPreview.value === 'actas-todas') return `Actas-responsabilidad-${fecha}.pdf`
+  return `Acta-responsabilidad-${actaNombre.value.replace(/\s+/g, '_')}-${fecha}.pdf`
 })
 
 function descargarPdf() {
@@ -303,9 +315,11 @@ onMounted(cargar)
         <div class="field"><label>Responsable</label>
           <select v-model="actaSel" class="select">
             <option value="">Elige la persona</option>
+            <option :value="ACTA_TODAS">Todas las personas (una acta por página)</option>
             <option v-for="c in lista" :key="c.id" :value="c.id">{{ c.nombre }}</option>
           </select>
           <small v-if="!actaSel" class="muted">Elige quién firma: la hoja se pide en cuanto selecciones.</small>
+          <small v-else-if="actaSel === ACTA_TODAS" class="muted">Saliendo en un PDF con una acta por página, por orden alfabético. El buscador de la pantalla decide quién entra.</small>
           <small v-else class="muted">El acta sale con su nombre, su carnet y su cargo, y los conteos de la BD. Si no tiene carnet ni cargo guardados, esos huecos se rellenan a mano.</small>
         </div>
       </div>

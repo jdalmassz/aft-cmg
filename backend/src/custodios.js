@@ -365,6 +365,83 @@ function dibujarParr(doc, tokens, x0, y0, ancho, altoLinea) {
   return y + altoLinea;
 }
 
+/**
+ * Dibuja UNA acta completa en la página actual del documento (cabecera, texto,
+ * renglones y firmas). Tamaño Letter: cabe entera en una página, así que el
+ * acta de una persona y la de «todas» (una por página) salen idénticas.
+ */
+function dibujarActa(doc, cu, fijos, utiles, fecha) {
+  const W = doc.page.width - M.left - M.right; // ancho útil
+  // MISMA cabecera que el resto de hojas del sistema: Entidad/Sucursal a la
+  // izquierda, título centrado en negrita 12 y logo a la derecha (110 pt).
+  const y0 = M.top;
+  kvLine(doc, M.left, y0, 'Entidad:', ACTA_ENTIDAD);
+  kvLine(doc, M.left, y0 + 14, 'Sucursal:', 'Camagüey');
+  if (fs.existsSync(LOGO)) {
+    try { doc.image(LOGO, doc.page.width - M.right - 110, y0 - 4, { width: 110 }); } catch (_) { /* logo opcional */ }
+  }
+  doc.font('Helvetica-Bold').fontSize(12)
+    .text(ACTA_TITULO, M.left, y0 + 30, { width: W, align: 'center' });
+  let y = doc.y + 14;
+
+  // El primer párrafo lleva los datos del responsable en negrita dentro del
+  // texto, como en la proforma original. PDFKit no mezcla fuentes en un solo
+  // text(), así que se mide y se dibuja palabra por palabra.
+  const tokens = [
+    { t: 'Yo' }, { t: cu.nombre, b: true },
+    { t: ', con número de Carnet de Identidad,' }, { vacio: !cu.carnet, t: cu.carnet, b: true },
+    { t: ', que ocupa el cargo (o responsabilidad)' }, { vacio: !cu.cargo, t: cu.cargo, b: true },
+    { t: ', en la entidad' }, { t: ACTA_ENTIDAD, b: true },
+    { t: ', declaro reconocer formalmente la responsabilidad con los recursos materiales y/o financieros asignados y de los cuales ostento la posesión, asumiendo su debida custodia, control y conservación.' }
+  ];
+  y = dibujarParr(doc, tokens, M.left, y, W, 15) + 10;
+
+  doc.font('Helvetica').fontSize(10.5)
+    .text('De producirse daños, perjuicios, deterioro o extravío a los recursos materiales y/o financieros a mí asignados, la autoridad que resulte competente está en el pleno derecho de exigir la responsabilidad material que se derive, según la normativa vigente.',
+      M.left, y, { width: W, align: 'justify' });
+  y = doc.y + 14;
+
+  doc.font('Helvetica-Bold').fontSize(10.5)
+    .text('Los recursos materiales y/o financieros por los cuales me responsabilizo son:', M.left, y, { width: W });
+  y = doc.y + 12;
+
+  // Los CUATRO renglones de la proforma siguen ahí; lo que se quitó fue la
+  // raya en blanco de los dos que el sistema no lleva. Los dos primeros salen
+  // con una X si tienen alguno (la cantidad no va en el acta).
+  const items = [
+    { rotulo: 'Activos Fijos Tangibles:', valor: fijos > 0 ? 'X' : '' },
+    { rotulo: 'Útiles y Herramientas:', valor: utiles > 0 ? 'X' : '' },
+    { rotulo: 'Medios de Rotación:', valor: '' },
+    { rotulo: 'Medios Monetarios:', valor: '' }
+  ];
+  doc.font('Helvetica').fontSize(10.5);
+  for (const it of items) {
+    doc.text(it.rotulo, M.left, y, { lineBreak: false });
+    if (it.valor) doc.text(it.valor, M.left + doc.widthOfString(it.rotulo) + 8, y, { lineBreak: false });
+    y += 22;
+  }
+
+  // Firmas al pie de la hoja. La fecha de notificación va ESCRITA SOBRE la raya
+  // (donde iría a mano lo que se anota), con su rótulo debajo: es la fecha en
+  // que se genera el documento (la misma del nombre del fichero).
+  const [aa, mm, dd] = fecha.split('-');
+  const fechaNotif = `${dd}/${mm}/${aa}`;
+  // 20 pt más arriba que antes: debajo queda el pie de paginación, igual que
+  // en el resto de hojas del sistema.
+  const yFirma = doc.page.height - M.bottom - 76;
+  doc.font('Helvetica').fontSize(10.5);
+  doc.lineWidth(0.8).strokeColor('black');
+  doc.moveTo(M.left, yFirma).lineTo(M.left + 200, yFirma).stroke();
+  doc.moveTo(M.left + 260, yFirma).lineTo(M.left + W, yFirma).stroke();
+  doc.text(fechaNotif, M.left + 260, yFirma - 17, { width: W - 260, align: 'center', lineBreak: false });
+  doc.text('Firma del responsable', M.left, yFirma + 6, { width: 200, align: 'center' });
+  doc.text('Fecha de notificación:', M.left + 260, yFirma + 6, { width: W - 260, align: 'center' });
+  doc.moveTo(M.left, yFirma + 44).lineTo(M.left + 200, yFirma + 44).stroke();
+  doc.moveTo(M.left + 260, yFirma + 44).lineTo(M.left + W, yFirma + 44).stroke();
+  doc.text('Firma del Representante de Sucursal', M.left, yFirma + 50, { width: 200, align: 'center' });
+  doc.text('Control Contable', M.left + 260, yFirma + 50, { width: W - 260, align: 'center' });
+}
+
 async function exportActaPdf(req, res, next) {
   try {
     const pool = db.getPool();
@@ -388,79 +465,55 @@ async function exportActaPdf(req, res, next) {
     res.setHeader('Content-Disposition', `attachment; filename="Acta-responsabilidad-${cu.nombre.replace(/\s+/g, '_')}-${fecha}.pdf"`);
     doc.pipe(res);
 
-    const W = doc.page.width - M.left - M.right; // ancho útil
-    // MISMA cabecera que el resto de hojas del sistema: Entidad/Sucursal a la
-    // izquierda, título centrado en negrita 12 y logo a la derecha (110 pt).
-    const y0 = M.top;
-    kvLine(doc, M.left, y0, 'Entidad:', ACTA_ENTIDAD);
-    kvLine(doc, M.left, y0 + 14, 'Sucursal:', 'Camagüey');
-    if (fs.existsSync(LOGO)) {
-      try { doc.image(LOGO, doc.page.width - M.right - 110, y0 - 4, { width: 110 }); } catch (_) { /* logo opcional */ }
-    }
-    doc.font('Helvetica-Bold').fontSize(12)
-      .text(ACTA_TITULO, M.left, y0 + 30, { width: W, align: 'center' });
-    let y = doc.y + 14;
-
-    // El primer párrafo lleva los datos del responsable en negrita dentro del
-    // texto, como en la proforma original. PDFKit no mezcla fuentes en un solo
-    // text(), así que se mide y se dibuja palabra por palabra.
-    const tokens = [
-      { t: 'Yo' }, { t: cu.nombre, b: true },
-      { t: ', con número de Carnet de Identidad,' }, { vacio: !cu.carnet, t: cu.carnet, b: true },
-      { t: ', que ocupa el cargo (o responsabilidad)' }, { vacio: !cu.cargo, t: cu.cargo, b: true },
-      { t: ', en la entidad' }, { t: ACTA_ENTIDAD, b: true },
-      { t: ', declaro reconocer formalmente la responsabilidad con los recursos materiales y/o financieros asignados y de los cuales ostento la posesión, asumiendo su debida custodia, control y conservación.' }
-    ];
-    y = dibujarParr(doc, tokens, M.left, y, W, 15) + 10;
-
-    doc.font('Helvetica').fontSize(10.5)
-      .text('De producirse daños, perjuicios, deterioro o extravío a los recursos materiales y/o financieros a mí asignados, la autoridad que resulte competente está en el pleno derecho de exigir la responsabilidad material que se derive, según la normativa vigente.',
-        M.left, y, { width: W, align: 'justify' });
-    y = doc.y + 14;
-
-    doc.font('Helvetica-Bold').fontSize(10.5)
-      .text('Los recursos materiales y/o financieros por los cuales me responsabilizo son:', M.left, y, { width: W });
-    y = doc.y + 12;
-
-    // Los CUATRO renglones de la proforma siguen ahí; lo que se quitó fue la
-    // raya en blanco de los dos que el sistema no lleva. Los dos primeros salen
-    // con una X si tienen alguno (la cantidad no va en el acta).
-    const items = [
-      { rotulo: 'Activos Fijos Tangibles:', valor: conteos.rows[0].fijos > 0 ? 'X' : '' },
-      { rotulo: 'Útiles y Herramientas:', valor: conteos.rows[0].utiles > 0 ? 'X' : '' },
-      { rotulo: 'Medios de Rotación:', valor: '' },
-      { rotulo: 'Medios Monetarios:', valor: '' }
-    ];
-    doc.font('Helvetica').fontSize(10.5);
-    for (const it of items) {
-      doc.text(it.rotulo, M.left, y, { lineBreak: false });
-      if (it.valor) doc.text(it.valor, M.left + doc.widthOfString(it.rotulo) + 8, y, { lineBreak: false });
-      y += 22;
-    }
-
-    // Firmas al pie de la hoja. La fecha de notificación va ESCRITA SOBRE la raya
-    // (donde iría a mano lo que se anota), con su rótulo debajo: es la fecha en
-    // que se genera el documento (la misma del nombre del fichero).
-    const [aa, mm, dd] = fecha.split('-');
-    const fechaNotif = `${dd}/${mm}/${aa}`;
-    // 20 pt más arriba que antes: debajo queda el pie de paginación, igual que
-    // en el resto de hojas del sistema.
-    const yFirma = doc.page.height - M.bottom - 76;
-    doc.font('Helvetica').fontSize(10.5);
-    doc.lineWidth(0.8).strokeColor('black');
-    doc.moveTo(M.left, yFirma).lineTo(M.left + 200, yFirma).stroke();
-    doc.moveTo(M.left + 260, yFirma).lineTo(M.left + W, yFirma).stroke();
-    doc.text(fechaNotif, M.left + 260, yFirma - 17, { width: W - 260, align: 'center', lineBreak: false });
-    doc.text('Firma del responsable', M.left, yFirma + 6, { width: 200, align: 'center' });
-    doc.text('Fecha de notificación:', M.left + 260, yFirma + 6, { width: W - 260, align: 'center' });
-    doc.moveTo(M.left, yFirma + 44).lineTo(M.left + 200, yFirma + 44).stroke();
-    doc.moveTo(M.left + 260, yFirma + 44).lineTo(M.left + W, yFirma + 44).stroke();
-    doc.text('Firma del Representante de Sucursal', M.left, yFirma + 50, { width: 200, align: 'center' });
-    doc.text('Control Contable', M.left + 260, yFirma + 50, { width: W - 260, align: 'center' });
+    dibujarActa(doc, cu, conteos.rows[0].fijos, conteos.rows[0].utiles, fecha);
 
     numerarPaginas(doc, 'Acta de responsabilidad material');
     doc.end();
   } catch (e) { next(e); }
 }
 
-module.exports = { listCustodios, createCustodio, updateCustodio, deleteCustodio, exportCustodiosXlsx, exportCustodiosPdf, exportActaPdf };
+/**
+ * TODAS las actas en un solo PDF: una por página, en alfabético. El mismo
+ * filtro `q` que la hoja de responsables decide quién entra (el buscador de la
+ * pantalla), así que da igual imprimir las de todos o las de un subconjunto.
+ */
+async function exportActasPdf(req, res, next) {
+  try {
+    const pool = db.getPool();
+    const q = (req.query.q || '').trim();
+    const cond = q ? 'WHERE cu.nombre ILIKE $1' : '';
+    const args = q ? [`%${q}%`] : [];
+    const r = await pool.query(`
+      SELECT cu.id, cu.nombre, cu.carnet, cu.cargo,
+             COUNT(a.id) FILTER (WHERE a.tipo = 'AFT')::int  AS fijos,
+             COUNT(a.id) FILTER (WHERE a.tipo = 'UTIL')::int AS utiles
+      FROM custodios cu
+      LEFT JOIN activos a ON a.custodio_id = cu.id
+      ${cond}
+      GROUP BY cu.id, cu.nombre, cu.carnet, cu.cargo
+      ORDER BY cu.nombre`, args);
+
+    const fecha = new Date().toISOString().slice(0, 10);
+    const doc = new PDFDocument({
+      size: 'LETTER', margin: 0, bufferPages: true,
+      info: { Title: 'Actas de responsabilidad material', Author: req.user?.nombre || 'AFT Camagüey' }
+    });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="Actas-responsabilidad-${fecha}.pdf"`);
+    doc.pipe(res);
+
+    r.rows.forEach((cu, i) => {
+      if (i) doc.addPage(); // cada acta empieza en su hoja
+      dibujarActa(doc, cu, cu.fijos, cu.utiles, fecha);
+    });
+    if (!r.rows.length) {
+      doc.font('Helvetica-Oblique').fontSize(10)
+        .text('No hay responsables registrados.', M.left, M.top + 30, { lineBreak: false });
+    }
+
+    numerarPaginas(doc, 'Acta de responsabilidad material');
+    doc.end();
+  } catch (e) { next(e); }
+}
+
+module.exports = { listCustodios, createCustodio, updateCustodio, deleteCustodio, exportCustodiosXlsx, exportCustodiosPdf, exportActaPdf, exportActasPdf };

@@ -266,6 +266,9 @@ Elimina (solo rol `admin`). Devuelve `{ "ok": true }`.
   tienen raya en blanco**. Al pie: «Firma del Representante de Sucursal»
   y «Fecha de notificación:» con la fecha en que se genera el documento, escrita
   **sobre la raya**.
+- `GET /api/admin/custodios/actas/pdf?q=` → **todas las actas** en un solo PDF
+  Carta: una por página, por orden alfabético (misma hoja que la individual).
+  `q` filtra por nombre, igual que la hoja de responsables: decide quién entra.
 - `POST /api/admin/custodios` → `{ "nombre": "...", "carnet": "...", "cargo": "...", "user_id": null }` → `201` con `{ id, nombre, carnet, cargo, activos: 0, utiles: 0 }`
 - `PUT /api/admin/custodios/:id` → `{ "nombre": "...", "carnet": "...", "cargo": "...", "user_id": null }`
 - `DELETE /api/admin/custodios/:id` → `{ "ok": true }`; `400` si tiene activos asignados
