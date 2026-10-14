@@ -52,6 +52,12 @@ function metaFrom(req, extra = {}) {
     responsableAreaSel: extra.responsableAreaSel || '',
     conteo: q.conteo || '100%',
     periodo: q.periodo || periodoActual(),
+    // Fecha en que se CREA la hoja (sale impresa para que el papel se sepa de
+    // cuándo es); la misma que lleva el nombre del fichero, en d/m/aaaa.
+    fecha: (() => {
+      const [aa, mm, dd] = new Date().toISOString().slice(0, 10).split('-');
+      return `${dd}/${mm}/${aa}`;
+    })(),
     // El responsable enganchado a su usuario manda sobre el nombre de la cuenta: en
     // la hoja hacen falta nombre y apellidos, no el usuario con el que entra.
     generadoPor: extra.generadoPor || q.generadoPor || req.user?.nombre || req.user?.username || '',
@@ -87,6 +93,9 @@ function drawHeader(doc, meta) {
     .text(`Período: ${meta.periodo}`, M.left, y0 + 58, {
       width: COL.ruleEnd - M.left, align: 'center'
     });
+  // La FECHA de creación va a la izquierda de la línea del Período (que va
+  // centrado): sale impresa en cada página, para que el papel se sepa de cuándo es.
+  if (meta.fecha) kvLine(doc, M.left, y0 + 58, 'Fecha:', meta.fecha);
 
   if (fs.existsSync(LOGO)) {
     try {
