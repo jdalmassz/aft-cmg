@@ -243,8 +243,8 @@ onMounted(cargar)
         <p class="muted">{{ lista.length }} responsable(s) · {{ totalActivos }} activo(s) y {{ totalUtiles }} útil(es) asignado(s)</p>
       </div>
       <span class="btns">
-        <button class="btn sec" title="Acta de responsabilidad material: elige la persona y mira la vista previa" @click="abrirActa">
-          <AppIcon name="file" :size="14" /> Acta
+        <button class="btn sec" title="Actas de responsabilidad material: la de una persona o todas en un PDF" @click="abrirActa">
+          <AppIcon name="file" :size="14" /> Actas
         </button>
         <button class="btn sec" title="Hoja de responsables y sus áreas: vista previa, imprimirla o bajarla en PDF/Excel" @click="verHoja">
           <AppIcon name="printer" :size="14" /> Hoja responsables
@@ -310,12 +310,12 @@ onMounted(cargar)
     </Drawer>
 
     <!-- Acta: cajón de opciones (quién firma) con su hoja pegada al lado izquierdo. -->
-    <Drawer :open="actaAbierto" titulo="Acta de responsabilidad material" subtitulo="Elige la persona" @close="cerrarActa">
+    <Drawer :open="actaAbierto" titulo="Actas de responsabilidad material" :subtitulo="actaSel === ACTA_TODAS ? 'Todas las personas' : 'Elige la persona'" @close="cerrarActa">
       <div class="form-grid una">
         <div class="field"><label>Responsable</label>
           <select v-model="actaSel" class="select">
             <option value="">Elige la persona</option>
-            <option :value="ACTA_TODAS">Todas las personas (una acta por página)</option>
+            <option :value="ACTA_TODAS">Todas las personas ({{ filtrados.length }})</option>
             <option v-for="c in lista" :key="c.id" :value="c.id">{{ c.nombre }}</option>
           </select>
           <small v-if="!actaSel" class="muted">Elige quién firma: la hoja se pide en cuanto selecciones.</small>

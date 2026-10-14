@@ -30,6 +30,12 @@ function periodoActual() {
   return `${MESES[d.getMonth()]} / ${d.getFullYear()}`;
 }
 
+// Hoy en d/m/aaaa (el mismo formato del acta y del nombre del fichero).
+function hoyDMA() {
+  const [aa, mm, dd] = new Date().toISOString().slice(0, 10).split('-');
+  return `${dd}/${mm}/${aa}`;
+}
+
 function metaFrom(req, extra = {}) {
   const q = req.query || {};
   // Útiles y herramientas: la misma hoja de conteo, pero sin área ni ubicación —un útil
@@ -54,10 +60,7 @@ function metaFrom(req, extra = {}) {
     periodo: q.periodo || periodoActual(),
     // Fecha en que se CREA la hoja (sale impresa para que el papel se sepa de
     // cuándo es); la misma que lleva el nombre del fichero, en d/m/aaaa.
-    fecha: (() => {
-      const [aa, mm, dd] = new Date().toISOString().slice(0, 10).split('-');
-      return `${dd}/${mm}/${aa}`;
-    })(),
+    fecha: hoyDMA(),
     // El responsable enganchado a su usuario manda sobre el nombre de la cuenta: en
     // la hoja hacen falta nombre y apellidos, no el usuario con el que entra.
     generadoPor: extra.generadoPor || q.generadoPor || req.user?.nombre || req.user?.username || '',

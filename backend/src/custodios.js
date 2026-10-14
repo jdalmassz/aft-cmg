@@ -444,17 +444,19 @@ function dibujarActa(doc, cu, fijos, utiles, fecha) {
 
 async function exportActaPdf(req, res, next) {
   try {
-    const pool = db.getPool();
     const id = Number(req.params.id);
-    const r = await pool.query('SELECT id, nombre, carnet, cargo FROM custodios WHERE id = $1', [id]);
+    // UNA sola query: el custodio y sus conteos juntos (mismo patrón que la de
+    // «todas»); antes eran dos idas a la BD para lo que es un solo documento.
+    const r = await db.getPool().query(`
+      SELECT cu.id, cu.nombre, cu.carnet, cu.cargo,
+             COUNT(a.id) FILTER (WHERE a.tipo = 'AFT')::int  AS fijos,
+             COUNT(a.id) FILTER (WHERE a.tipo = 'UTIL')::int AS utiles
+      FROM custodios cu
+      LEFT JOIN activos a ON a.custodio_id = cu.id
+      WHERE cu.id = $1
+      GROUP BY cu.id, cu.nombre, cu.carnet, cu.cargo`, [id]);
     if (!r.rowCount) return res.status(404).json({ error: 'Responsable no encontrado' });
     const cu = r.rows[0];
-
-    const conteos = await pool.query(`
-      SELECT
-        COUNT(*) FILTER (WHERE tipo = 'AFT')::int  AS fijos,
-        COUNT(*) FILTER (WHERE tipo = 'UTIL')::int AS utiles
-      FROM activos WHERE custodio_id = $1`, [id]);
 
     const fecha = new Date().toISOString().slice(0, 10);
     const doc = new PDFDocument({
@@ -465,7 +467,7 @@ async function exportActaPdf(req, res, next) {
     res.setHeader('Content-Disposition', `attachment; filename="Acta-responsabilidad-${cu.nombre.replace(/\s+/g, '_')}-${fecha}.pdf"`);
     doc.pipe(res);
 
-    dibujarActa(doc, cu, conteos.rows[0].fijos, conteos.rows[0].utiles, fecha);
+    dibujarActa(doc, cu, cu.fijos, cu.utiles, fecha);
 
     numerarPaginas(doc, 'Acta de responsabilidad material');
     doc.end();
